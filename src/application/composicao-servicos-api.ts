@@ -93,7 +93,7 @@ export function criarServicosAplicacaoApi(
     ) =>
       criarRespostaSucesso(
         {
-          aplicacao: "ConcursaAI",
+          aplicacao: "Siso Aprova",
           versaoDotNet: process.versions.node,
           bancoConfigurado: repositorio ? true : conexaoPostgreSql.estaConfigurada,
         },

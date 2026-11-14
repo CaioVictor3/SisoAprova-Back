@@ -11,7 +11,7 @@ const servidorHttp = componentesAplicacao.app.listen(
   () => {
     componentesAplicacao.logger.info(
       { host: componentesAplicacao.config.host, port: componentesAplicacao.config.port },
-      "ConcursaAI API em execução",
+      "Siso Aprova API em execução",
     );
 
     if (componentesAplicacao.config.email.worker && componentesAplicacao.db.estaConfigurada) {
