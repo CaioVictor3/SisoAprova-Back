@@ -111,8 +111,8 @@ export function carregarConfiguracoesAmbiente(
     ),
     auth: {
       key: chaveConfiguracao,
-      issuer: obterTextoAmbiente("AUTHENTICATION_TOKEN_ISSUER", "ConcursaAI"),
-      audience: obterTextoAmbiente("AUTHENTICATION_TOKEN_AUDIENCE", "ConcursaAI"),
+      issuer: obterTextoAmbiente("AUTHENTICATION_TOKEN_ISSUER", "Siso Aprova"),
+      audience: obterTextoAmbiente("AUTHENTICATION_TOKEN_AUDIENCE", "Siso Aprova"),
       accessMinutes: obterNumeroAmbiente("AUTHENTICATION_ACCESS_TOKEN_DURATION_MINUTES", 15, 5, 30),
       sessionDays: obterNumeroAmbiente("AUTHENTICATION_SESSION_DURATION_DAYS", 7, 1, 30),
       clientUrl: frontendUrl,
@@ -147,10 +147,10 @@ export function carregarConfiguracoesAmbiente(
     },
     viaCepUrl: obterTextoAmbiente("VIACEP_API_BASE_URL", "https://viacep.com.br/ws/"),
     email: {
-      appName: obterTextoAmbiente("TRANSACTIONAL_EMAIL_APPLICATION_NAME", "ConcursaAI"),
+      appName: obterTextoAmbiente("TRANSACTIONAL_EMAIL_APPLICATION_NAME", "Siso Aprova"),
       key: obterTextoAmbiente("RESEND_API_KEY"),
       from: obterTextoAmbiente("RESEND_SENDER_EMAIL_ADDRESS"),
-      fromName: obterTextoAmbiente("RESEND_SENDER_DISPLAY_NAME", "ConcursaAI"),
+      fromName: obterTextoAmbiente("RESEND_SENDER_DISPLAY_NAME", "Siso Aprova"),
       webhookSecret: obterTextoAmbiente("RESEND_WEBHOOK_SIGNING_SECRET"),
       url: obterTextoAmbiente("RESEND_API_BASE_URL", "https://api.resend.com/"),
       worker: obterBooleanoAmbiente("TRANSACTIONAL_EMAIL_WORKER_ENABLED", true),

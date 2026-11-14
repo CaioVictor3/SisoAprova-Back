@@ -192,8 +192,8 @@ export class ServicoEnvioEmailsTransacionaisResend {
       to,
       subject:
         type === "EMAIL_VERIFICATION"
-          ? "Confirme seu e-mail — ConcursaAI"
-          : "Recupere seu acesso — ConcursaAI",
+          ? "Confirme seu e-mail — Siso Aprova"
+          : "Recupere seu acesso — Siso Aprova",
       template: JSON.stringify({ nome: name.slice(0, 200) }),
       link: criptografarConteudoAutenticado(link, this.config.auth.key),
       attempts: this.config.email.attempts,
@@ -487,7 +487,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
         "Criar nova senha",
       ],
       WELCOME_EMAIL: [
-        "Bem-vindo ao ConcursaAI",
+        "Bem-vindo ao Siso Aprova",
         "Sua conta está pronta. Continue sua jornada de estudos com foco.",
         "Acessar plataforma",
       ],

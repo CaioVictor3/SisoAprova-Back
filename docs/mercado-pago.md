@@ -1,4 +1,4 @@
-# Pagamentos antecipados — ConcursaAI / Mercado Pago
+# Pagamentos antecipados — Siso Aprova / Mercado Pago
 
 Implementação em 24/10/2026. Backend existente Next.js/TypeScript, frontend React/Vite e Supabase Auth/Data API preservados. Não foi introduzido um backend .NET nem uma segunda autenticação.
 
@@ -69,7 +69,7 @@ A configuração privada inicia com `ambiente='teste'`. O acesso exige que o amb
 
 Camadas novas: domínio em `domain/pagamentos-assinaturas.ts`; configuração em `config/configuracoes-mercado-pago.ts`; aplicação em `application/pagamentos-assinaturas.service.ts`; cliente/repositório em `infrastructure`; HTTP em `http/rotas-financeiro-next.ts`; worker em `worker-pagamentos-supabase.ts`.
 
-Todas as rotas abaixo começam com `/api/financeiro`. Aceitam os envelopes JSON já utilizados pelo frontend. Sessão por cookies HttpOnly ou Bearer. Mutações por cookies exigem Origin permitido e `X-Concursa-Client: web`.
+Todas as rotas abaixo começam com `/api/financeiro`. Aceitam os envelopes JSON já utilizados pelo frontend. Sessão por cookies HttpOnly ou Bearer. Mutações por cookies exigem Origin permitido e `X-Siso-Aprova-Client: web` (ou `X-Concursa-Client: web`).
 
 | Método / sufixo | Finalidade / entrada |
 | --- | --- |

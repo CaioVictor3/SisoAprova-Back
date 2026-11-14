@@ -135,8 +135,10 @@ export function criarAplicacaoHttpExpress(options: OpcoesInicializacaoAplicacao 
     );
 
     if (mutation && (requisicaoHttp.path.toLowerCase().startsWith("/api/navegador") || session)) {
+      const clienteHeader =
+        requisicaoHttp.get("X-Siso-Aprova-Client") ?? requisicaoHttp.get("X-Concursa-Client");
       if (
-        requisicaoHttp.get("X-Concursa-Client") !== "web" ||
+        clienteHeader !== "web" ||
         !config.origins.includes(requisicaoHttp.get("Origin") ?? "")
       ) {
         respostaHttp

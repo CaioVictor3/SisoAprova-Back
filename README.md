@@ -1,4 +1,4 @@
-# ConcursaAI — API Next.js
+# Siso Aprova — API Next.js
 
 O backend Next.js expõe uma API independente em `/api`. Ele autentica no Supabase Auth e consulta tabelas e funções pela Data API com a sessão do usuário.
 
@@ -75,7 +75,7 @@ Google depende do provedor habilitado no Supabase. Os e-mails de confirmação e
 
 ## Banco e código legado
 
-As migrations incrementais desta migração ficam em `database/migrations`. Foram aplicadas no projeto ConcursaAI as migrations de honra, consumo/perguntas de IA, permissões Data API, comunicação, sincronização de perfis e operação. Elas não são executadas automaticamente na inicialização da API.
+As migrations incrementais desta migração ficam em `database/migrations`. Foram aplicadas no projeto Siso Aprova as migrations de honra, consumo/perguntas de IA, permissões Data API, comunicação, sincronização de perfis e operação. Elas não são executadas automaticamente na inicialização da API.
 
 As implementações Express/PostgreSQL e os testes de compatibilidade permanecem no repositório para consulta e comparação. A API Next e o worker atual utilizam a Data API e não precisam de `POSTGRESQL_CONNECTION_URL`. O worker não é iniciado por `npm run dev` ou `npm start`; execute seu comando próprio quando quiser processar a fila. Os documentos antigos de paridade referem-se ao backend Express anterior.
 

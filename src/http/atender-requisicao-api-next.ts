@@ -248,7 +248,7 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
         criarRespostaSucesso(
           {
             status: "healthy",
-            aplicacao: "ConcursaAI",
+            aplicacao: "Siso Aprova",
             runtime: "next",
             bancoConfigurado: !!(
               process.env.SUPABASE_PROJECT_URL && process.env.SUPABASE_PUBLISHABLE_API_KEY
@@ -274,8 +274,11 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
       !tokenBearer &&
       (caminho.toLowerCase().startsWith("/api/navegador") || possuiCookieSupabase)
     ) {
+      const clientHeader =
+        requisicao.headers.get("X-Siso-Aprova-Client") ??
+        requisicao.headers.get("X-Concursa-Client");
       if (
-        requisicao.headers.get("X-Concursa-Client") !== "web" ||
+        clientHeader !== "web" ||
         !origem ||
         !config.origins.includes(origem)
       ) {
