@@ -11,10 +11,11 @@
   "Prova": {
     "table": "provas",
     "key": "idProva",
-    "select": "idProva,ano,orgao,idOrganizadora,organizadora,cargo,composicao_confirmada,revisao_pendente",
+    "select": "idProva,ano,uf,orgao,idOrganizadora,organizadora,cargo,composicao_confirmada,revisao_pendente",
     "columns": {
       "idProva": "Guid",
       "ano": "int",
+      "uf": "string?",
       "orgao": "string",
       "idOrganizadora": "Guid?",
       "organizadora": "string?",

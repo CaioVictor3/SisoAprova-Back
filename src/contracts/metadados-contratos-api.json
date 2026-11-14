@@ -3159,6 +3159,15 @@
         "required": false
       },
       {
+        "name": "uf",
+        "type": "string",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": false
+      },
+      {
         "name": "orgao",
         "type": "string",
         "nullable": false,
@@ -3284,6 +3293,15 @@
       {
         "name": "ano",
         "type": "int",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": false
+      },
+      {
+        "name": "uf",
+        "type": "string",
         "nullable": true,
         "array": false,
         "item": null,
@@ -3464,6 +3482,15 @@
         "name": "ano",
         "type": "int",
         "nullable": false,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": false
+      },
+      {
+        "name": "uf",
+        "type": "string",
+        "nullable": true,
         "array": false,
         "item": null,
         "default": null,

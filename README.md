@@ -82,3 +82,5 @@ As implementações Express/PostgreSQL e os testes de compatibilidade permanecem
 ## Pagamentos e assinaturas
 
 Checkout Pro via Orders API, planos antecipados e renovação manual: veja [configuração, fluxos e homologação](docs/mercado-pago.md). A migration financeira altera o acesso aos recursos Premium; aplique primeiro em homologação.
+
+[Contrato compartilhado de importação de provas em JSON](../compartilhado/importacao-provas/README.md)

@@ -6,6 +6,7 @@ export interface AtualizarProvaRequestModel extends CriarProvaRequestModel {
 
 export interface CriarProvaRequestModel {
   ano: number;
+  uf?: string | null;
   orgao: string;
   idOrganizadora: string;
   cargo: string | null;
@@ -30,6 +31,7 @@ export interface ListarPendenciasProvasResponseModel {
 
 export interface ListarProvasRequestModel {
   ano: number | null;
+  uf?: string | null;
   orgao: string | null;
   organizadora: string | null;
   cargo: string | null;
@@ -63,6 +65,7 @@ export interface PendenciaProvaResponseModel {
 export interface ProvaResponseModel {
   idProva: string;
   ano: number;
+  uf: string | null;
   orgao: string;
   idOrganizadora: string | null;
   organizadora: string | null;
