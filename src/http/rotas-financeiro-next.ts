@@ -140,7 +140,7 @@ export async function atenderFinanceiro(req: NextRequest) {
       const resposta = responder(criarRespostaSucesso({}, "OK"));
       resposta.headers.set(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Concursa-Client, X-Idempotency-Key",
+        "Content-Type, Authorization, X-Concursa-Client, X-Siso-Aprova-Client, X-Idempotency-Key",
       );
       resposta.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
       return resposta;

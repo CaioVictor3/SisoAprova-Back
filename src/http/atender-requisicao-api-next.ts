@@ -217,7 +217,7 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
       }
       resposta.headers.set(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Concursa-Client, X-Idempotency-Key",
+        "Content-Type, Authorization, X-Concursa-Client, X-Siso-Aprova-Client, X-Idempotency-Key",
       );
       resposta.headers.set(
         "Access-Control-Allow-Methods",
