@@ -1,0 +1,3 @@
+interface:
+  display_name: "Importar provas no Supabase"
+  short_description: "Confere PDFs, imagens e gabaritos antes de importar provas"
