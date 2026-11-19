@@ -23,6 +23,10 @@ export class GerenciadorCookiesSessaoNavegador {
   constructor(readonly config: ConfiguracoesAmbiente) {}
 
   obterNomeCookie(kind: "sessao" | "google") {
+    return (this.config.production ? "__Host-" : "") + "sisoaprova-" + kind;
+  }
+
+  private obterNomeCookieLegado(kind: "sessao" | "google") {
     return (this.config.production ? "__Host-" : "") + "concursa-" + kind;
   }
 
@@ -61,19 +65,33 @@ export class GerenciadorCookiesSessaoNavegador {
         return null;
       }
 
-      const valorAtual = this.lerCookieHttp(requisicaoHttp, this.obterNomeCookie(kind));
+      const valorAtual =
+        this.lerCookieHttp(requisicaoHttp, this.obterNomeCookie(kind)) ??
+        this.lerCookieHttp(requisicaoHttp, this.obterNomeCookieLegado(kind));
 
       if (!valorAtual) {
         return null;
       }
 
-      const dadosPersistencia = JSON.parse(
-        descriptografarConteudoAutenticado(
+      let textoDescriptografado: string;
+      try {
+        textoDescriptografado = descriptografarConteudoAutenticado(
+          valorAtual,
+          this.config.auth.key,
+          "SisoAprova/node-cookie/" + kind + "/v1",
+        );
+      } catch {
+        textoDescriptografado = descriptografarConteudoAutenticado(
           valorAtual,
           this.config.auth.key,
           "ConcursaAI/node-cookie/" + kind + "/v1",
-        ),
-      ) as { expires: number; data: T };
+        );
+      }
+
+      const dadosPersistencia = JSON.parse(textoDescriptografado) as {
+        expires: number;
+        data: T;
+      };
 
       return dadosPersistencia.expires > Date.now() ? dadosPersistencia.data : null;
     } catch {
@@ -92,7 +110,7 @@ export class GerenciadorCookiesSessaoNavegador {
         data: dadosPersistencia,
       }),
       this.config.auth.key,
-      "ConcursaAI/node-cookie/" + kind + "/v1",
+      "SisoAprova/node-cookie/" + kind + "/v1",
     );
 
     const options = {

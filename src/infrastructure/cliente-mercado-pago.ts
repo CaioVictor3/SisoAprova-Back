@@ -147,10 +147,10 @@ export class ClienteMercadoPago {
       total_amount: decimalMonetario(pedido.valor),
       external_reference: pedido.referencia_externa,
       expiration_time: "P1D",
-      description: `ConcursaAI — ${pedido.plano_nome}`,
+      description: `Siso Aprova — ${pedido.plano_nome}`,
       items: [
         {
-          title: `ConcursaAI ${pedido.plano_nome}`,
+          title: `Siso Aprova ${pedido.plano_nome}`,
           quantity: 1,
           unit_price: decimalMonetario(pedido.valor),
         },

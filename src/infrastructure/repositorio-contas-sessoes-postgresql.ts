@@ -350,7 +350,7 @@ export class RepositorioContasSessoesPostgreSql {
 
         if (welcome) {
           await clienteTransacaoPostgreSql.query(
-            `insert into comunicacao.emails_transacionais("idEmailTransacional",tipo_evento,"idUsuario",email_destinatario,assunto,dados_template,maximo_tentativas,chave_idempotencia,agendado_em) select $1,'WELCOME_EMAIL',u."idUsuario",u.email,'Boas-vindas ao ConcursaAI',jsonb_build_object('nome',u.nome_completo),$2,'WELCOME_EMAIL/'||u."idUsuario"::text,now() from public.usuarios u where u."idUsuario"=$3 on conflict(chave_idempotencia) do nothing`,
+            `insert into comunicacao.emails_transacionais("idEmailTransacional",tipo_evento,"idUsuario",email_destinatario,assunto,dados_template,maximo_tentativas,chave_idempotencia,agendado_em) select $1,'WELCOME_EMAIL',u."idUsuario",u.email,'Boas-vindas ao Siso Aprova',jsonb_build_object('nome',u.nome_completo),$2,'WELCOME_EMAIL/'||u."idUsuario"::text,now() from public.usuarios u where u."idUsuario"=$3 on conflict(chave_idempotencia) do nothing`,
             [randomUUID(), this.conexaoPostgreSql.config.email.attempts, identificadorUsuario],
           );
         }

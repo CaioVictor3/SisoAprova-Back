@@ -1,0 +1,24 @@
+{
+  "prova": {
+    "ano": 2023,
+    "uf": "AC",
+    "orgao": "Polícia Militar do Acre",
+    "cargo": "2º Tenente Estagiário de Saúde – Cirurgião-dentista",
+    "organizadora": "FGV"
+  },
+  "questoes": [
+    {
+      "numero": 1,
+      "tema": "História",
+      "enunciado": "Qual tratado formalizou a incorporação do Acre ao Brasil?",
+      "alternativas": [
+        { "letra": "A", "texto": "Tratado de Petrópolis" },
+        { "letra": "B", "texto": "Tratado de Tordesilhas" },
+        { "letra": "C", "texto": "Tratado de Madri" },
+        { "letra": "D", "texto": "Tratado de Santo Ildefonso" }
+      ],
+      "letraCorreta": "A",
+      "statusGabarito": "definitivo"
+    }
+  ]
+}

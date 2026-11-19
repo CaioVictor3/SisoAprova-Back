@@ -140,7 +140,7 @@ export async function atenderFinanceiro(req: NextRequest) {
       const resposta = responder(criarRespostaSucesso({}, "OK"));
       resposta.headers.set(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Concursa-Client, X-Idempotency-Key",
+        "Content-Type, Authorization, X-Concursa-Client, X-Siso-Aprova-Client, X-Idempotency-Key",
       );
       resposta.headers.set("Access-Control-Allow-Methods", "GET, POST, PUT, OPTIONS");
       return resposta;
@@ -173,7 +173,9 @@ export async function atenderFinanceiro(req: NextRequest) {
       !["GET", "HEAD"].includes(req.method) &&
       !req.headers.get("authorization")?.match(/^Bearer /i)
     ) {
-      if (req.headers.get("x-concursa-client") !== "web" || !origem || !origens.includes(origem))
+      const clientHeader =
+        req.headers.get("x-siso-aprova-client") ?? req.headers.get("x-concursa-client");
+      if (clientHeader !== "web" || !origem || !origens.includes(origem))
         throw new ErroRegraNegocioHttp("Origem da solicitação não autorizada.", 403);
     }
     const cliente = criarClienteSupabaseRequisicao(req, (valores, headers) => {

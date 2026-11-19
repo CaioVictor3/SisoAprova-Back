@@ -11,13 +11,13 @@ const paginaSwagger = `<!doctype html>
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>ConcursaAI API · Swagger</title>
+    <title>Siso Aprova API · Swagger</title>
     <link rel="icon" href="data:,">
     <link rel="stylesheet" href="/api/docs/swagger-ui.css">
   </head>
   <body>
     <div id="swagger-ui"></div>
-    <noscript>Ative o JavaScript para consultar e testar as rotas da API ConcursaAI.</noscript>
+    <noscript>Ative o JavaScript para consultar e testar as rotas da API Siso Aprova.</noscript>
     <script src="/api/docs/swagger-ui-bundle.js" defer></script>
     <script src="/api/docs/swagger-initializer.js" defer></script>
   </body>
@@ -37,6 +37,7 @@ const inicializacaoSwagger = `window.ui = SwaggerUIBundle({
   requestInterceptor: function (request) {
     var destino = new URL(request.url, window.location.origin);
     if (destino.origin === window.location.origin && destino.pathname.startsWith("/api/Navegador/")) {
+      request.headers["X-Siso-Aprova-Client"] = "web";
       request.headers["X-Concursa-Client"] = "web";
       request.credentials = "same-origin";
     } else {

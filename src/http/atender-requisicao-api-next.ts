@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import { type NextRequest, NextResponse } from "next/server";
 import { pino } from "pino";
 import { ServicoAutenticacaoContasSessoes } from "../application/autenticacao-contas-sessoes.service.js";
+import { importarProva } from "../application/importacao-prova.service.js";
 import { criarServicosAplicacaoApi } from "../application/composicao-servicos-api.js";
 import { carregarConfiguracoesAmbiente } from "../config/configuracoes-ambiente.js";
 import routes from "../contracts/rotas-publicas-api.json" with { type: "json" };
@@ -216,7 +217,7 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
       }
       resposta.headers.set(
         "Access-Control-Allow-Headers",
-        "Content-Type, Authorization, X-Concursa-Client, X-Idempotency-Key",
+        "Content-Type, Authorization, X-Concursa-Client, X-Siso-Aprova-Client, X-Idempotency-Key",
       );
       resposta.headers.set(
         "Access-Control-Allow-Methods",
@@ -247,7 +248,7 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
         criarRespostaSucesso(
           {
             status: "healthy",
-            aplicacao: "ConcursaAI",
+            aplicacao: "Siso Aprova",
             runtime: "next",
             bancoConfigurado: !!(
               process.env.SUPABASE_PROJECT_URL && process.env.SUPABASE_PUBLISHABLE_API_KEY
@@ -273,8 +274,11 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
       !tokenBearer &&
       (caminho.toLowerCase().startsWith("/api/navegador") || possuiCookieSupabase)
     ) {
+      const clientHeader =
+        requisicao.headers.get("X-Siso-Aprova-Client") ??
+        requisicao.headers.get("X-Concursa-Client");
       if (
-        requisicao.headers.get("X-Concursa-Client") !== "web" ||
+        clientHeader !== "web" ||
         !origem ||
         !config.origins.includes(origem)
       ) {
@@ -321,7 +325,8 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
 
     const rota = routes.find((item) => item.path === caminho && item.method === metodo);
     const rotaAdicional = correspondeRotaAdicional(caminho);
-    if (!rota && !rotaAdicional) {
+    const rotaImportacao = caminho === "/api/administracao/provas/importar" && metodo === "POST";
+    if (!rota && !rotaAdicional && !rotaImportacao) {
       throw new ErroRegraNegocioHttp("Endpoint não encontrado.", 404);
     }
 
@@ -337,6 +342,12 @@ export async function atenderRequisicaoApiNext(requisicao: Request, _contexto: C
       throw new ErroRegraNegocioHttp("Entre na sua conta para continuar.", 401);
     }
     const repositorioSupabase = new RepositorioConsultasNegocioSupabase(supabase, usuario);
+    if (rotaImportacao) {
+      limitarRequisicoes("importacao:" + usuario.id, 30);
+      const resposta = await importarProva(repositorioSupabase, () => lerCorpoJson(requisicao));
+      return responder(resposta, 200, requisicao, identificador, cookiesPendentes);
+    }
+
     if (
       rotaAdicional ||
       [

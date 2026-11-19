@@ -108,7 +108,7 @@ export function gerarDocumentoOpenApi() {
         ...((op.parameters as unknown[]) ?? []),
         {
           in: "header",
-          name: "X-Concursa-Client",
+          name: "X-Siso-Aprova-Client",
           required: rotaApi.method !== "GET",
           schema: { type: "string", enum: ["web"], default: "web" },
         },
@@ -520,7 +520,7 @@ export function gerarDocumentoOpenApi() {
   return {
     openapi: "3.1.0",
     info: {
-      title: "ConcursaAI API",
+      title: "Siso Aprova API",
       version: "1.0.0",
       description:
         "Selecione uma rota, clique em **Try it out**, preencha os campos e clique em **Execute**. " +

@@ -2,7 +2,7 @@
 export const consultasSqlEmailsTransacionais = {
   enfileirarEmailsUsuariosInativos: `insert into comunicacao.emails_transacionais
               ("idEmailTransacional",tipo_evento,"idUsuario",email_destinatario,assunto,dados_template,maximo_tentativas,chave_idempotencia,agendado_em)
-            select gen_random_uuid(),'USER_INACTIVE',u."idUsuario",u.email,'Continue seus estudos — ConcursaAI',
+            select gen_random_uuid(),'USER_INACTIVE',u."idUsuario",u.email,'Continue seus estudos — Siso Aprova',
                    jsonb_build_object('nome',u.nome_completo,'dias',d.dias),@maximo,
                    'USER_INACTIVE/'||u."idUsuario"::text||'/'||extract(epoch from coalesce(u.ultimo_acesso_em,u.criado_em))::bigint||'/'||d.dias,
                    now()

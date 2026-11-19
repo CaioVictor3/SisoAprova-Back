@@ -118,7 +118,7 @@ export async function verificarSenhaHashPersistido(
 export function criptografarConteudoAutenticado(
   value: string,
   chaveConfiguracao: Buffer,
-  purpose = "ConcursaAI/email-link/v1",
+  purpose = "SisoAprova/email-link/v1",
 ) {
   const derived = createHmac("sha256", chaveConfiguracao).update(purpose).digest();
 
@@ -134,7 +134,7 @@ export function criptografarConteudoAutenticado(
 export function descriptografarConteudoAutenticado(
   value: string,
   chaveConfiguracao: Buffer,
-  purpose = "ConcursaAI/email-link/v1",
+  purpose = "SisoAprova/email-link/v1",
 ) {
   const bytes = Buffer.from(value, "base64");
 
@@ -142,11 +142,19 @@ export function descriptografarConteudoAutenticado(
     throw new Error("Conteúdo protegido inválido.");
   }
 
-  const derived = createHmac("sha256", chaveConfiguracao).update(purpose).digest();
+  const decifrarComProposito = (propositoAtual: string) => {
+    const derived = createHmac("sha256", chaveConfiguracao).update(propositoAtual).digest();
+    const decipher = createDecipheriv("aes-256-gcm", derived, bytes.subarray(0, 12));
+    decipher.setAuthTag(bytes.subarray(12, 28));
+    return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8");
+  };
 
-  const decipher = createDecipheriv("aes-256-gcm", derived, bytes.subarray(0, 12));
-
-  decipher.setAuthTag(bytes.subarray(12, 28));
-
-  return Buffer.concat([decipher.update(bytes.subarray(28)), decipher.final()]).toString("utf8");
+  try {
+    return decifrarComProposito(purpose);
+  } catch (erro) {
+    if (purpose === "SisoAprova/email-link/v1") {
+      return decifrarComProposito("ConcursaAI/email-link/v1");
+    }
+    throw erro;
+  }
 }

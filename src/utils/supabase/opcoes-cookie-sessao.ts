@@ -1,6 +1,7 @@
 import type { CookieOptionsWithName } from "@supabase/ssr";
 
-const nomeSessaoProducao = "__Host-concursaai-auth-token";
+const nomeSessaoProducao = "__Host-sisoaprova-auth-token";
+const nomeSessaoProducaoLegado = "__Host-concursaai-auth-token";
 
 export function opcoesCookieSessaoSupabase(): CookieOptionsWithName {
   const producao = process.env.NODE_ENV === "production";
@@ -20,6 +21,8 @@ export function temCookieSessaoSupabase(cabecalho: string | null): boolean {
     return (
       nome === nomeSessaoProducao ||
       nome.startsWith(`${nomeSessaoProducao}.`) ||
+      nome === nomeSessaoProducaoLegado ||
+      nome.startsWith(`${nomeSessaoProducaoLegado}.`) ||
       /^sb-[^=]+-auth-token(?:\.\d+)?$/.test(nome)
     );
   });

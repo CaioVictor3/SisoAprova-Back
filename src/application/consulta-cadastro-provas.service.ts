@@ -1,3 +1,4 @@
+import { normalizarUf } from "../domain/validacao-uf.js";
 import type * as ContratosApi from "../contracts/modelos-requisicoes-respostas-api.js";
 import {
   ErroRegraNegocioHttp,
@@ -16,6 +17,7 @@ import { ServicoAutorizacaoUsuarioAutenticado } from "./autorizacao-usuario-aute
 
 export function criarFiltrosConsultaProvas(solicitacaoExamFilters: {
   ano: number | null;
+  uf?: string | null;
   orgao: string | null;
   organizadora: string | null;
   cargo: string | null;
@@ -23,6 +25,8 @@ export function criarFiltrosConsultaProvas(solicitacaoExamFilters: {
   validarAno(solicitacaoExamFilters.ano);
 
   const filtrosConsulta: FiltroConsultaPostgreSql[] = [];
+  const uf = normalizarUf(solicitacaoExamFilters.uf);
+  if (uf) filtrosConsulta.push(criarFiltroIgualdade("uf", uf));
 
   if (solicitacaoExamFilters.ano !== null) {
     filtrosConsulta.push(criarFiltroIgualdade("ano", solicitacaoExamFilters.ano));
@@ -93,6 +97,7 @@ export function operacoesConsultaCadastroProvas(
     const saved = await repositorioNegocio.executarFuncaoPostgreSql<string>("salvar_prova", {
       p_idprova: identificadorProva,
       p_ano: solicitacaoCriarProva.ano,
+      ...(solicitacaoCriarProva.uf == null ? {} : { p_uf: normalizarUf(solicitacaoCriarProva.uf) }),
       p_orgao: orgao,
       p_idorganizadora: solicitacaoCriarProva.idOrganizadora,
       p_cargo: cargo,
