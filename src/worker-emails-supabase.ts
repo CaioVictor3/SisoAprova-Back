@@ -1,3 +1,4 @@
+import { redacaoLogs } from "./security/headers.mjs";
 import { pino } from "pino";
 import { carregarConfiguracoesAmbiente } from "./config/configuracoes-ambiente.js";
 import { ConexaoTransacoesPostgreSql } from "./infrastructure/conexao-transacoes-postgresql.js";
@@ -7,7 +8,7 @@ import { iniciarWorkerEnvioEmailsTransacionais } from "./infrastructure/worker-e
 import { criarClienteSupabaseAdministrativo } from "./utils/supabase/admin.js";
 
 const ambiente = carregarConfiguracoesAmbiente(process.env, { supabase: true });
-const logger = pino({ level: ambiente.logLevel });
+const logger = pino({ level: ambiente.logLevel, redact: redacaoLogs });
 const persistencia = new PersistenciaWorkerEmailsSupabase(criarClienteSupabaseAdministrativo());
 
 if (process.argv.includes("--verificar")) {

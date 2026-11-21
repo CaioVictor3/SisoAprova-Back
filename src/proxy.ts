@@ -1,10 +1,9 @@
-import type { NextRequest } from "next/server";
-import { atualizarSessao } from "./utils/supabase/middleware.js";
+import { NextResponse } from "next/server";
 
-export function proxy(request: NextRequest) {
-  return atualizarSessao(request);
+export function proxy() {
+  // Landing pública e estática: não consulta sessão, configuração ou serviços externos.
+  // Os Route Handlers da API autenticam e atualizam os próprios cookies.
+  return NextResponse.next();
 }
 
-// A API atualiza os próprios cookies em seus Route Handlers. O Proxy atende
-// apenas a página Next e não intercepta o frontend React/Vite.
 export const config = { matcher: "/" };

@@ -3,6 +3,7 @@
 import type { DadosPessoaRequestModel, UsuarioResponseModel } from "./identidade-usuarios.js";
 
 export interface AtualizarSenhaRequestModel {
+  senhaAtual: string;
   senha: string;
 }
 
@@ -83,9 +84,7 @@ export interface ReenviarConfirmacaoRequestModel {
 
 export interface RenovarSessaoNavegadorRequestModel {}
 
-export interface RenovarSessaoRequestModel {
-  refreshToken: string;
-}
+export interface RenovarSessaoRequestModel {}
 
 export interface SairSessaoRequestModel {}
 

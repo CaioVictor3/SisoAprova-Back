@@ -51,10 +51,9 @@ export function criarDespachoOperacoesApi(services: Services, query: boolean) {
       services.cadastrarEstudante(
         vincularRequisicaoAoContrato("CadastrarEstudanteRequestModel", input, query),
       ),
-    "/api/Autenticacao/renovar-sessao": (input: unknown) =>
-      services.renovarSessao(
-        vincularRequisicaoAoContrato("RenovarSessaoRequestModel", input, query),
-      ),
+    "/api/Autenticacao/renovar-sessao": () => {
+      throw new Error("Renovação exclusiva do handler Supabase com cookies.");
+    },
     "/api/Autenticacao/solicitar-recuperacao-senha": (input: unknown) =>
       services.solicitarRecuperacaoSenha(
         vincularRequisicaoAoContrato("SolicitarRecuperacaoSenhaRequestModel", input, query),

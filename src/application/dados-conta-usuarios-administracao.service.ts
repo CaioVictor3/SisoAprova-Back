@@ -31,9 +31,11 @@ export function operacoesDadosContaUsuarios(
           [criarFiltroIgualdade("idUsuario", usuarioAutenticado.idUsuario)],
           "Conta não encontrada.",
         ),
-        pessoa: await repositorioNegocio.executarFuncaoPostgreSqlComContrato(
-          "obter_minha_pessoa",
-          "PessoaResponseModel",
+        pessoa: mascararPessoa(
+          await repositorioNegocio.executarFuncaoPostgreSqlComContrato(
+            "obter_minha_pessoa",
+            "PessoaResponseModel",
+          ),
         ),
       },
       "Dados da conta consultados.",
@@ -48,7 +50,20 @@ export function operacoesDadosContaUsuarios(
     ) {
       await contextoAutorizacao.exigirUsuarioAtivo();
 
-      const dadosPessoaisValidados = validarDadosPessoais(solicitacaoAtualizarMinhaConta);
+      const cpf = solicitacaoAtualizarMinhaConta.cpf;
+      const original =
+        cpf == null
+          ? await repositorioNegocio.executarFuncaoPostgreSqlComContrato(
+              "obter_minha_pessoa",
+              "PessoaResponseModel",
+            )
+          : null;
+      if (cpf != null && (typeof cpf !== "string" || cpf.includes("*")))
+        throw new ErroRegraNegocioHttp("Informe um novo CPF completo ou omita o campo.");
+      const dadosPessoaisValidados = validarDadosPessoais({
+        ...solicitacaoAtualizarMinhaConta,
+        cpf: cpf ?? original?.cpf ?? "",
+      });
 
       await repositorioNegocio.executarFuncaoPostgreSql("salvar_minha_pessoa", {
         p_pessoa: {
@@ -109,15 +124,36 @@ export function operacoesDadosContaUsuarios(
         throw new ErroRegraNegocioHttp("Tipo de usuário inválido.");
       }
 
+      if (solicitacaoListarUsuarios.quantidadePorPagina > 100)
+        throw new ErroRegraNegocioHttp("Solicite até 100 usuários por página.");
+      if ((solicitacaoListarUsuarios.busca?.length ?? 0) > 200)
+        throw new ErroRegraNegocioHttp("Busca muito longa.");
       const filtrosConsulta: FiltroConsultaPostgreSql[] = [];
+      const busca: FiltroConsultaPostgreSql[] = [];
+      if (solicitacaoListarUsuarios.estadoCadastro) {
+        if (
+          !["ativo", "convite_pendente", "verificacao_pendente"].includes(
+            solicitacaoListarUsuarios.estadoCadastro,
+          )
+        )
+          throw new ErroRegraNegocioHttp("Estado inválido.");
+        filtrosConsulta.push(
+          criarFiltroIgualdade("estado_cadastro", solicitacaoListarUsuarios.estadoCadastro),
+        );
+      }
+      if (solicitacaoListarUsuarios.cadastroCompleto != null)
+        filtrosConsulta.push(
+          criarFiltroIgualdade("cadastro_completo", solicitacaoListarUsuarios.cadastroCompleto),
+        );
 
       if (solicitacaoListarUsuarios.tipo) {
         filtrosConsulta.push(criarFiltroIgualdade("tipo", solicitacaoListarUsuarios.tipo));
       }
 
       if (solicitacaoListarUsuarios.busca?.trim()) {
-        filtrosConsulta.push(
+        busca.push(
           criarFiltroContemTexto("nome_completo", solicitacaoListarUsuarios.busca),
+          criarFiltroContemTexto("email", solicitacaoListarUsuarios.busca),
         );
       }
 
@@ -126,6 +162,7 @@ export function operacoesDadosContaUsuarios(
         "UsuarioResponseModel",
         {
           filters: filtrosConsulta,
+          or: busca,
           order: [["nome_completo"], ["idUsuario"]],
           offset:
             (solicitacaoListarUsuarios.pagina - 1) * solicitacaoListarUsuarios.quantidadePorPagina,
@@ -160,4 +197,10 @@ export function operacoesDadosContaUsuarios(
       return criarRespostaSucesso(metricasSistema, "Métricas do sistema consultadas.");
     },
   };
+}
+
+export function mascararPessoa<T extends { cpf: string | null }>(pessoa: T | null): T | null {
+  if (!pessoa) return null;
+  const cpf = pessoa.cpf?.replace(/\D/g, "");
+  return { ...pessoa, cpf: cpf?.length === 11 ? `***.***.${cpf.slice(6, 9)}-**` : null };
 }

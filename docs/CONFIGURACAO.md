@@ -34,3 +34,7 @@ A sessão em produção usa cookies HTTPS, HttpOnly e particionados. Quando os s
 O runtime Next.js e os workers consultam a Data API do Supabase. `POSTGRESQL_CONNECTION_URL` e os ajustes `POSTGRESQL_*` atendem apenas aos utilitários e à implementação legada de PostgreSQL.
 
 Para migrar uma instalação que já usa variáveis privadas na hospedagem, mantenha os valores e atualize os nomes conforme o exemplo. Em particular, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SECRET_KEY` passam a usar os nomes da tabela acima. `AUTH_CLIENT_URL` passa a ser `FRONTEND_APPLICATION_URL`.
+
+## Segurança do runtime
+
+Consulte [SEGURANCA-OPERACAO.md](SEGURANCA-OPERACAO.md) antes de implantar: store SQLite requer diretório privado gravável .cache/seguranca, configuração de proxy válida em produção e Node compatível. Sem IP confiável, fluxos anônimos sensíveis falham503 em produção; desenvolvimento direto permanece utilizável por cota de conta/email. Opção1 exige CORS ausente, não vazio. Este lote não altera nenhuma variável real nem aplica migrations.

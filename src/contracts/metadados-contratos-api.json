@@ -102,6 +102,15 @@
         "item": null,
         "default": "string.Empty",
         "required": true
+      },
+      {
+        "name": "senhaAtual",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": true
       }
     ],
     "source": "ConcursaAI.Application/Models/Autenticacao/AtualizarSenhaRequestModel.cs"
@@ -468,17 +477,7 @@
   },
   "RenovarSessaoRequestModel": {
     "base": null,
-    "fields": [
-      {
-        "name": "refreshToken",
-        "type": "string",
-        "nullable": false,
-        "array": false,
-        "item": null,
-        "default": "string.Empty",
-        "required": true
-      }
-    ],
+    "fields": [],
     "source": "ConcursaAI.Application/Models/Autenticacao/RenovarSessaoRequestModel.cs"
   },
   "SairSessaoRequestModel": {
@@ -2418,8 +2417,99 @@
     "source": "ConcursaAI.Application/Models/Estudo/SalvarMetaSemanalRequestModel.cs"
   },
   "AtualizarMinhaContaRequestModel": {
-    "base": "DadosPessoaRequestModel",
-    "fields": [],
+    "base": null,
+    "fields": [
+      {
+        "name": "nomeCompleto",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      },
+      {
+        "name": "dataNascimento",
+        "type": "DateOnly",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": true
+      },
+      {
+        "name": "cpf",
+        "type": "string",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": false
+      },
+      {
+        "name": "cep",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      },
+      {
+        "name": "logradouro",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      },
+      {
+        "name": "numero",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      },
+      {
+        "name": "complemento",
+        "type": "string",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": false
+      },
+      {
+        "name": "bairro",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      },
+      {
+        "name": "cidade",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      },
+      {
+        "name": "uf",
+        "type": "string",
+        "nullable": false,
+        "array": false,
+        "item": null,
+        "default": "string.Empty",
+        "required": true
+      }
+    ],
     "source": "ConcursaAI.Application/Models/Identidade/AtualizarMinhaContaRequestModel.cs"
   },
   "DadosPessoaRequestModel": {
@@ -2555,6 +2645,24 @@
         "array": false,
         "item": null,
         "default": "20",
+        "required": false
+      },
+      {
+        "name": "estadoCadastro",
+        "type": "string",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": null,
+        "required": false
+      },
+      {
+        "name": "cadastroCompleto",
+        "type": "bool",
+        "nullable": true,
+        "array": false,
+        "item": null,
+        "default": null,
         "required": false
       }
     ],

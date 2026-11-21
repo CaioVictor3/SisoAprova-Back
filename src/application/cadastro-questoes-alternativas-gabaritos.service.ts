@@ -1,3 +1,4 @@
+import { validarUrlImagem } from "../security/imagens.js";
 import type * as ContratosApi from "../contracts/modelos-requisicoes-respostas-api.js";
 import {
   ErroRegraNegocioHttp,
@@ -232,6 +233,7 @@ export function operacoesCadastroQuestoes(
       }
     }
 
+    validarUrlImagem(solicitacaoCriarQuestao.imagemUrl);
     const saved = await repositorioNegocio.executarFuncaoPostgreSql<string>("salvar_questao", {
       p_idquestao: identificadorQuestao,
       p_questao: {

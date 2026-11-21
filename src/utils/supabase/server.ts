@@ -62,3 +62,18 @@ export function criarClienteSupabaseRequisicao(
     },
   });
 }
+
+// Cliente transitório: reautenticação não substitui a sessão/cookies da requisição.
+export async function reautenticarSenha(email: string, senha: string, id: string) {
+  const { url, chave } = obterConfiguracaoPublicaSupabase();
+  const cliente = criarCliente(url, chave, {
+    auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
+  });
+  const resultado = await cliente.auth.signInWithPassword({ email, password: senha });
+  if (resultado.error || !resultado.data.user || resultado.data.user.id !== id)
+    throw new ErroRegraNegocioHttp("A senha atual não confere.", 401);
+  const encerrada = await cliente.auth.signOut({ scope: "local" });
+  if (encerrada.error)
+    throw new ErroRegraNegocioHttp("Não foi possível concluir a reautenticação.", 503);
+}
+import { ErroRegraNegocioHttp } from "../../domain/erros-validacoes-respostas-api.js";

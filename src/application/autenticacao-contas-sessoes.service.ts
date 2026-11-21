@@ -456,7 +456,7 @@ export class ServicoAutenticacaoContasSessoes {
         return response(identificadorUsuario);
       },
 
-      renovarSessao: async (solicitacaoRenovarSessao: ContratosApi.RenovarSessaoRequestModel) => {
+      renovarSessao: async (solicitacaoRenovarSessao: { refreshToken: string }) => {
         this.exigirConfiguracaoAutenticacao();
 
         token(solicitacaoRenovarSessao.refreshToken);

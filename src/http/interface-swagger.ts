@@ -1,3 +1,4 @@
+import { cabecalhosSeguranca } from "../security/headers.mjs";
 import { readFile } from "node:fs/promises";
 import { join } from "node:path";
 
@@ -36,7 +37,7 @@ const inicializacaoSwagger = `window.ui = SwaggerUIBundle({
   validatorUrl: null,
   requestInterceptor: function (request) {
     var destino = new URL(request.url, window.location.origin);
-    if (destino.origin === window.location.origin && destino.pathname.startsWith("/api/Navegador/")) {
+    if (destino.origin === window.location.origin) {
       request.headers["X-Siso-Aprova-Client"] = "web";
       request.headers["X-Concursa-Client"] = "web";
       request.credentials = "same-origin";
@@ -49,6 +50,7 @@ const inicializacaoSwagger = `window.ui = SwaggerUIBundle({
 
 export async function atenderDocumentacaoSwagger(arquivo: string[] = []) {
   const cabecalhos = {
+    ...cabecalhosSeguranca(),
     "Cache-Control": "no-store",
     "X-Content-Type-Options": "nosniff",
     "Referrer-Policy": "no-referrer",
@@ -60,7 +62,7 @@ export async function atenderDocumentacaoSwagger(arquivo: string[] = []) {
         ...cabecalhos,
         "Content-Type": "text/html; charset=utf-8",
         "Content-Security-Policy":
-          "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; base-uri 'none'; frame-ancestors 'none'",
+          "default-src 'none'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'",
       },
     });
   }

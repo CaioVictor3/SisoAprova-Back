@@ -10,3 +10,5 @@ coverage/
 *.log
 .tmp/
 .DS_Store
+
+.cache/seguranca/

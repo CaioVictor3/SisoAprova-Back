@@ -1,3 +1,4 @@
+import { cabecalhosSeguranca } from "./src/security/headers.mjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -8,6 +9,15 @@ const nextConfig: NextConfig = {
       "./node_modules/swagger-ui-dist/swagger-ui.css",
       "./node_modules/swagger-ui-dist/swagger-ui-bundle.js",
     ],
+  },
+  async headers() {
+    return [
+      {
+        // /api/docs define CSP própria do Swagger (dev) e aplica cabecalhosSeguranca() diretamente.
+        source: "/((?!api/docs(?:/|$)).*)",
+        headers: Object.entries(cabecalhosSeguranca()).map(([key, value]) => ({ key, value })),
+      },
+    ];
   },
   async redirects() {
     return [

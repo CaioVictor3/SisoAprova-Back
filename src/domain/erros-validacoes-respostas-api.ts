@@ -87,13 +87,24 @@ export function classificarErroAplicacao(error: unknown): {
   }
 
   if (erroCapturado.code === "P0001") {
+    const mensagensSeguras: Record<string, [number, string]> = {
+      "Você atingiu o limite de 20 interações com IA por dia.": [
+        429,
+        "Limite diário de interações atingido.",
+      ],
+      "Você atingiu o limite de 20 análises por dia. Suas análises salvas continuam disponíveis.": [
+        429,
+        "Limite diário de análises atingido.",
+      ],
+      "Esta questão já está sendo analisada. Aguarde e consulte novamente.": [
+        409,
+        "Esta questão já está sendo analisada.",
+      ],
+    };
+    const segura = mensagensSeguras[erroCapturado.message ?? ""];
     return {
-      status: erroCapturado.message?.includes("limite de 20")
-        ? 429
-        : erroCapturado.message?.includes("já está sendo analisada")
-          ? 409
-          : 400,
-      message: erroCapturado.message ?? "Operação inválida.",
+      status: segura?.[0] ?? 400,
+      message: segura?.[1] ?? "Não foi possível realizar esta operação.",
     };
   }
 

@@ -1,3 +1,5 @@
+import { validarSenha } from "../security/senhas.js";
+import { verificarRecuperacao } from "../security/sessoes.js";
 import type { SupabaseClient, User } from "@supabase/supabase-js";
 import { randomUUID } from "node:crypto";
 import { validarDadosPessoais } from "../domain/validacao-dados-pessoais.js";
@@ -73,6 +75,11 @@ export async function atenderAutenticacaoSupabaseNext(
   supabase: SupabaseClient,
   lerCorpo: () => Promise<unknown>,
   origemFrontend?: string,
+  opcoes: {
+    bearerToken?: string;
+    revogarBearer?: (token: string) => Promise<void>;
+    reautenticar?: (email: string, senha: string, id: string) => Promise<void>;
+  } = {},
 ) {
   const acao = caminho.split("/").at(-1)!;
   const mensagem = (texto: string) => criarRespostaSucesso({ mensagem: texto }, texto);
@@ -82,11 +89,7 @@ export async function atenderAutenticacaoSupabaseNext(
       throw new ErroRegraNegocioHttp("Envie um objeto JSON válido.");
     return valor as Record<string, unknown>;
   };
-  const senhaValida = (valor: unknown) => {
-    if (typeof valor !== "string" || valor.length < 8 || valor.length > 128 || !valor.trim())
-      throw new ErroRegraNegocioHttp("A senha deve ter entre 8 e 128 caracteres.");
-    return valor;
-  };
+  const senhaValida = validarSenha;
   const emailValido = (valor: unknown) => {
     if (
       typeof valor !== "string" ||
@@ -204,6 +207,8 @@ export async function atenderAutenticacaoSupabaseNext(
     );
   }
   if (acao === "entrar-estudante" || acao === "entrar-administrador") {
+    if (opcoes.bearerToken)
+      throw new ErroRegraNegocioHttp("O login usa cookies HttpOnly, sem Bearer.", 400);
     const dados = await lerCorpo();
     if (!dados || typeof dados !== "object" || Array.isArray(dados)) {
       throw new ErroRegraNegocioHttp(credenciaisInvalidas, 401);
@@ -241,36 +246,51 @@ export async function atenderAutenticacaoSupabaseNext(
       {
         usuario,
         expiresIn: resultado.data.session.expires_in,
-        ...(caminho.startsWith("/api/Autenticacao/")
-          ? {
-              accessToken: resultado.data.session.access_token,
-              refreshToken: resultado.data.session.refresh_token,
-            }
-          : {}),
       },
       "Acesso realizado.",
     );
   }
 
   if (metodo === "POST" && acao === "sair-sessao") {
-    await supabase.auth.signOut();
-    return criarRespostaSucesso({ mensagem: "Sessão encerrada." }, "Sessão encerrada.");
+    const user = await supabase.auth.getUser();
+    if (user.error || !user.data.user) throw new ErroRegraNegocioHttp("Sessão inválida.", 401);
+    if (opcoes.bearerToken) {
+      if (!opcoes.revogarBearer) throw new ErroRegraNegocioHttp("Revogação indisponível.", 503);
+      await opcoes.revogarBearer(opcoes.bearerToken);
+    } else {
+      const resultado = await supabase.auth.signOut({ scope: "global" });
+      if (resultado.error)
+        throw new ErroRegraNegocioHttp("Não foi possível encerrar a sessão.", 503);
+    }
+    return mensagem("Sessão encerrada.");
   }
 
-  if (acao === "renovar-sessao" && caminho.startsWith("/api/Autenticacao/")) {
-    const dados = await corpo();
-    if (typeof dados.refreshToken !== "string")
+  if (acao === "renovar-sessao") {
+    if (opcoes.bearerToken)
+      throw new ErroRegraNegocioHttp("Renove a sessão usando cookies HttpOnly.", 400);
+    const atual = await supabase.auth.getUser();
+    if (atual.error || !atual.data.user)
       throw new ErroRegraNegocioHttp("Sua sessão expirou. Entre novamente.", 401);
-    const r = await supabase.auth.refreshSession({ refresh_token: dados.refreshToken });
+    const r = await supabase.auth.refreshSession();
     if (r.error || !r.data.user || !r.data.session)
       throw new ErroRegraNegocioHttp("Sua sessão expirou. Entre novamente.", 401);
+    let usuario;
+    try {
+      usuario = await perfilUsuario(supabase, r.data.user);
+    } catch {
+      const encerrada = await supabase.auth.signOut({ scope: "global" });
+      if (encerrada.error)
+        throw new ErroRegraNegocioHttp("Não foi possível revogar a sessão.", 503);
+      throw new ErroRegraNegocioHttp("Conta indisponível.", 403);
+    }
+    if (usuario.estadoCadastro !== "ativo") {
+      const encerrada = await supabase.auth.signOut({ scope: "global" });
+      if (encerrada.error)
+        throw new ErroRegraNegocioHttp("Não foi possível revogar a sessão.", 503);
+      throw new ErroRegraNegocioHttp("Conta indisponível.", 403);
+    }
     return criarRespostaSucesso(
-      {
-        usuario: await perfilUsuario(supabase, r.data.user),
-        accessToken: r.data.session.access_token,
-        refreshToken: r.data.session.refresh_token,
-        expiresIn: r.data.session.expires_in,
-      },
+      { usuario, expiresIn: r.data.session.expires_in },
       "Sessão renovada.",
     );
   }
@@ -289,18 +309,32 @@ export async function atenderAutenticacaoSupabaseNext(
       "Vínculo consultado.",
     );
   if (acao === "redefinir-senha" || acao === "atualizar-senha") {
+    if (opcoes.bearerToken)
+      throw new ErroRegraNegocioHttp("Use uma sessão por cookies para alterar a senha.", 400);
     const dados = await corpo();
-    const r = await supabase.auth.updateUser({ password: senhaValida(dados.senha) });
-    if (r.error)
-      throw new ErroRegraNegocioHttp(
-        "Não foi possível alterar a senha. Confira o link ou tente novamente.",
+    const recovery = await verificarRecuperacao(supabase);
+    if (acao === "redefinir-senha" && !recovery)
+      throw new ErroRegraNegocioHttp("Use um link de recuperação válido.", 403);
+    if (acao === "atualizar-senha") {
+      if (recovery) throw new ErroRegraNegocioHttp("Use a redefinição de senha.", 403);
+      if (typeof dados.senhaAtual !== "string" || !dados.senhaAtual || !autenticado.data.user.email)
+        throw new ErroRegraNegocioHttp("Informe sua senha atual ou use a recuperação.");
+      if (!opcoes.reautenticar) throw new ErroRegraNegocioHttp("Reautenticação indisponível.", 503);
+      await opcoes.reautenticar(
+        autenticado.data.user.email,
+        dados.senhaAtual,
+        autenticado.data.user.id,
       );
-    await supabase.auth.signOut({ scope: acao === "atualizar-senha" ? "others" : "global" });
-    return mensagem(
-      acao === "atualizar-senha"
-        ? "Senha atualizada. As outras sessões foram encerradas."
-        : "Senha alterada. Entre com sua nova senha.",
-    );
+    }
+    const r = await supabase.auth.updateUser({ password: senhaValida(dados.senha) });
+    if (r.error) throw new ErroRegraNegocioHttp("Não foi possível alterar a senha.", 400);
+    const encerrada = await supabase.auth.signOut({ scope: "global" });
+    if (encerrada.error)
+      throw new ErroRegraNegocioHttp(
+        "Senha alterada, mas a revogação falhou. Entre em contato com o suporte.",
+        503,
+      );
+    return mensagem("Senha alterada. Entre com sua nova senha.");
   }
 
   if (metodo === "GET") {

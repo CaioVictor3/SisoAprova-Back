@@ -1,3 +1,4 @@
+import { validarUrlImagem } from "../security/imagens.js";
 import { normalizarUf } from "../domain/validacao-uf.js";
 import { randomUUID } from "node:crypto";
 import { ServicoAutorizacaoUsuarioAutenticado } from "./autorizacao-usuario-autenticado.js";
@@ -149,14 +150,7 @@ export function prepararImportacaoProva(entrada: unknown) {
     }
     const imagem_url =
       questao.imagemUrl == null ? null : texto(questao.imagemUrl, `a URL da imagem ${campo}`, 2048);
-    if (imagem_url && !URL.canParse(imagem_url)) {
-      throw new ErroRegraNegocioHttp(`Informe uma URL de imagem válida para a questão ${numero}.`);
-    }
-    if (imagem_url && !["http:", "https:"].includes(new URL(imagem_url).protocol)) {
-      throw new ErroRegraNegocioHttp(
-        `Use uma URL HTTP ou HTTPS para a imagem da questão ${numero}.`,
-      );
-    }
+    validarUrlImagem(imagem_url);
     if (questao.idTema == null && questao.tema == null && arquivo.idTemaPadrao == null) {
       throw new ErroRegraNegocioHttp(`Informe o tema ${campo}.`);
     }

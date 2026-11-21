@@ -1,6 +1,8 @@
 // Contratos de Identidade preservados da API .NET.
 
-export interface AtualizarMinhaContaRequestModel extends DadosPessoaRequestModel {}
+export interface AtualizarMinhaContaRequestModel extends Omit<DadosPessoaRequestModel, "cpf"> {
+  cpf?: string | null;
+}
 
 export interface DadosPessoaRequestModel {
   nomeCompleto: string;
@@ -16,6 +18,8 @@ export interface DadosPessoaRequestModel {
 }
 
 export interface ListarUsuariosRequestModel {
+  estadoCadastro?: string | null;
+  cadastroCompleto?: boolean | null;
   tipo: string | null;
   busca: string | null;
   pagina: number;

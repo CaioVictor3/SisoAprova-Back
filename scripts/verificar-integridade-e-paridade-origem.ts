@@ -1,52 +1,22 @@
-import { readFile } from "node:fs/promises";
-import { createHash } from "node:crypto";
-import { join } from "node:path";
+// Verifica o contrato ativo Next sem carregar configuração, banco ou runtime Express.
 import assert from "node:assert/strict";
-import inventory from "../docs/source-inventory.json" with { type: "json" };
 import routes from "../src/contracts/rotas-publicas-api.json" with { type: "json" };
-import { criarServicosAplicacaoApi } from "../src/application/composicao-servicos-api.js";
-import { criarAplicacaoHttpExpress } from "../src/aplicacao-http-express.js";
-import { carregarConfiguracoesAmbiente } from "../src/config/configuracoes-ambiente.js";
-
-const runtime = criarAplicacaoHttpExpress({
-  config: carregarConfiguracoesAmbiente({ BACKEND_LOG_LEVEL: "silent" }),
-});
-
-const services = criarServicosAplicacaoApi(
-  runtime.db,
-  runtime.auth,
-  new (
-    await import("../src/infrastructure/cliente-analise-questoes-openai.js")
-  ).ClienteAnaliseQuestoesOpenAI(runtime.config),
-  { id: "", sessionId: "", token: "" },
+import { metadata } from "../src/contracts/validacao-conversao-contratos-api.js";
+import { gerarDocumentoOpenApi } from "../src/http/documentacao-openapi.js";
+const doc = gerarDocumentoOpenApi();
+const vistos = new Set<string>();
+for (const rota of routes) {
+  const chave = rota.method + " " + rota.path;
+  assert(!vistos.has(chave), "Rota duplicada");
+  vistos.add(chave);
+  assert(metadata[rota.request], "Contrato de entrada ausente");
+  assert(metadata[rota.response], "Contrato de saída ausente");
+  assert(doc.paths[rota.path]?.[rota.method.toLowerCase()], "Rota ausente no OpenAPI");
+}
+assert(
+  !JSON.stringify(doc.paths).includes('"refreshToken"'),
+  "Rotas ativas não devem exigir refreshToken",
 );
-
-assert.equal(routes.length, inventory.routes.length);
-
-for (const route of routes) {
-  if (["Navegador", "ResendWebhook"].includes(route.controller)) {
-    continue;
-  }
-
-  assert.equal(typeof services[route.action as keyof typeof services], "function", route.path);
-}
-
-let verified = 0;
-
-for (const file of inventory.files) {
-  const path = join("../ConcursaAI.BackEnd", file.path);
-
-  const actual = createHash("sha256")
-    .update(await readFile(path))
-    .digest("hex");
-
-  assert.equal(actual, file.sha256, "Origem alterada desde inventário: " + file.path);
-
-  verified++;
-}
-
 console.log(
-  `${routes.length} endpoints com implementação registrada; ${verified} arquivos da origem preservados.`,
+  `${vistos.size} contratos de rotas ativos presentes no OpenAPI. Paridade histórica .NET não é executada.`,
 );
-
-await runtime.db.encerrarPoolConexoes();

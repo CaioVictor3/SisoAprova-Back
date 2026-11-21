@@ -3,8 +3,6 @@ import { readFileSync, writeFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
-config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
-
 const formatoIdentificadorUuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const identificadorUuidValido = (identificadorUuid) =>
@@ -165,6 +163,7 @@ export function validarImportacao(documentoProva) {
 }
 
 async function executar() {
+  config({ path: fileURLToPath(new URL("../../../.env", import.meta.url)), quiet: true });
   const caminhoArquivoEntrada = process.argv[2];
 
   if (!caminhoArquivoEntrada) {
@@ -193,7 +192,7 @@ async function executar() {
 
   if (!tokenAdministrador) {
     throw new Error(
-      "Informe um token temporário de administrador em ADMINISTRATIVE_IMPORT_ACCESS_TOKEN. Não utilize service_role.",
+      "Informe um Bearer temporário de administrador obtido por fluxo externo autorizado em ADMINISTRATIVE_IMPORT_ACCESS_TOKEN. O login HTTP usa cookies e não emite tokens JSON. Não utilize service_role.",
     );
   }
 

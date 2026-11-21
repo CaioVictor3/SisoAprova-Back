@@ -49,7 +49,14 @@ export function gerarDocumentoOpenApi() {
     schemas[name] = {
       type: "object",
       properties,
-      required: Object.keys(properties),
+      required: Object.keys(properties).filter(
+        (campo) =>
+          !(name === "AtualizarMinhaContaRequestModel" && campo === "cpf") &&
+          !(
+            name === "ListarUsuariosRequestModel" &&
+            ["estadoCadastro", "cadastroCompleto"].includes(campo)
+          ),
+      ),
       "x-contract-module": metadata[name]!.source.split("/").slice(2, -1).join("/"),
     };
   }
@@ -83,7 +90,7 @@ export function gerarDocumentoOpenApi() {
     const op: Record<string, unknown> = {
       operationId: rotaApi.controller + "_" + rotaApi.action,
       tags: [rotaApi.controller],
-      security: rotaApi.anonymous || rotaNavegador ? [] : [{ bearerAuth: [] }],
+      security: rotaApi.anonymous ? [] : [{ cookieAuth: [] }, { bearerAuth: [] }],
       responses,
     };
 
@@ -438,7 +445,6 @@ export function gerarDocumentoOpenApi() {
       "Estorno total ou cancelamento; exige administrador, justificativa e habilitação operacional",
     ],
     ["webhook", "post", "Receber notificação assinada de order e persistir na fila"],
-    ["tarefas", "get", "Executar manutenção com a credencial do agendador"],
     [
       "tarefas",
       "post",
@@ -525,23 +531,27 @@ export function gerarDocumentoOpenApi() {
       description:
         "Selecione uma rota, clique em **Try it out**, preencha os campos e clique em **Execute**. " +
         "Comece por `GET /api/health` no grupo **Saúde da API**.\n\n" +
-        "**Rotas protegidas:** execute `POST /api/Autenticacao/entrar-estudante` ou `POST /api/Autenticacao/entrar-administrador` " +
-        "com e-mail e senha. Copie `data.accessToken` da resposta e cole no campo `bearerAuth` em **Authorize**, " +
-        "sem o prefixo Bearer. A autorização é descartada ao recarregar a página.\n\n" +
-        "**Rotas Navegador:** para testar a sessão HttpOnly no Swagger, inclua a origem da API em " +
-        "`BACKEND_CORS_ALLOWED_ORIGINS` e entre por uma rota do grupo **Navegador**.",
+        "**Sessões:** login e renovação usam somente cookies HttpOnly; tokens não são retornados em JSON. " +
+        "Use a sessão do navegador no Swagger local, com a origem da API explicitamente autorizada. " +
+        "CLI pode usar Bearer de administrador obtido por fluxo externo autorizado. Documentação indisponível em produção.",
     },
     servers: [{ url: "/", description: "Servidor atual" }],
     paths,
     components: {
       schemas,
       securitySchemes: {
+        cookieAuth: {
+          type: "apiKey",
+          in: "cookie",
+          name: "__Host-sisoaprova-auth-token",
+          description: "Sessão HttpOnly, gerenciada pelo servidor.",
+        },
         bearerAuth: {
           type: "http",
           scheme: "bearer",
           bearerFormat: "JWT",
           description:
-            "Informe data.accessToken retornado pelo login em Autenticacao, sem o prefixo Bearer.",
+            "Bearer externo autorizado; o login HTTP desta API não emite tokens no corpo.",
         },
         agendadorBearerAuth: {
           type: "http",

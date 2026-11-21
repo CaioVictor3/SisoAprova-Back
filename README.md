@@ -57,7 +57,7 @@ Para testar uma rota protegida:
 3. Clique em **Authorize** e cole o token em `bearerAuth`, sem o prefixo `Bearer`.
 4. Abra a rota desejada, selecione **Try it out**, preencha o request e clique em **Execute**.
 
-A autorização fica na página até recarregar. Para testar as rotas **Navegador** no Swagger, inclua também a origem da API em `BACKEND_CORS_ALLOWED_ORIGINS` e faça login pelo grupo **Navegador**. Localmente, a lista pode ser `http://localhost:5173,http://localhost:3000`. A sessão desse fluxo usa cookies HttpOnly.
+A API usa somente cookies HttpOnly para login/renovação; não devolve accessToken/refreshToken no JSON. Swagger e OpenAPI só estão disponíveis fora de produção. Para testar localmente, autorize a origem da API explicitamente e use a sessão no navegador. CLI de importação aceita Bearer externo autorizado, sem emissão de tokens por esta API.
 
 O endpoint `/api/health/ready` verifica a comunicação com o Supabase. O Swagger fica em `/swagger` no domínio da API.
 
@@ -84,3 +84,9 @@ As implementações Express/PostgreSQL e os testes de compatibilidade permanecem
 Checkout Pro via Orders API, planos antecipados e renovação manual: veja [configuração, fluxos e homologação](docs/mercado-pago.md). A migration financeira altera o acesso aos recursos Premium; aplique primeiro em homologação.
 
 [Contrato compartilhado de importação de provas em JSON](../compartilhado/importacao-provas/README.md)
+
+## Segurança e validação local (20/11/2026)
+
+Consulte [operação dos controles](docs/SEGURANCA-OPERACAO.md). `npm test` executa somente mocks/SQLite temporário, em diretório sem .env e com fetch externo bloqueado. `npm run typecheck` e `npm run check:parity` verificam tipos e presença/consistência dos contratos ativos no OpenAPI; esta última não executa a antiga paridade .NET. `npm run contratos:exportar -- /caminho/openapi.json` exporta esquema sem iniciar servidor nem carregar env. O runtime HTTP único é Next.js; Express e dist/ antigos foram removidos após inventário.
+
+Senhas novas exigem 8–128 caracteres, sem espaços nas pontas. Isso não substitui proteção HIBP/senhas vazadas no Supabase Auth; habilitação cloud não foi verificada. Contas antigas podem entrar com senha anterior; a regra vale para cadastro/troca. Alteração exige senhaAtual; contas sem senha usam recuperação. Alterar/redefinir encerra a sessão e a interface deve pedir novo login. Sessões recovery verificadas só acessam redefinir-senha/sair-sessao.
