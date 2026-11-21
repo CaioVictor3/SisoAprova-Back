@@ -1,3 +1,8 @@
+import {
+  ClientePaymentsMercadoPago,
+  validarPagamentoBrick,
+  validarWebhookPayments,
+} from "../infrastructure/cliente-payments-mercado-pago.js";
 import { cookiesParaResposta } from "../security/cookies.js";
 import { lerBytesLimitados } from "../security/corpo.js";
 import { aplicarCabecalhos, redacaoLogs } from "../security/headers.mjs";
@@ -6,10 +11,15 @@ import { ipConfiavel, exigirIp, limitesAplicacao } from "../security/rate-limit.
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { pino } from "pino";
 import { after, NextResponse, type NextRequest } from "next/server";
-import { carregarMercadoPago } from "../config/configuracoes-mercado-pago.js";
+import {
+  carregarMercadoPago,
+  configuracaoPublicaMercadoPago,
+  configuracaoOrdersLegada,
+} from "../config/configuracoes-mercado-pago.js";
 import { carregarConfiguracoesAmbiente } from "../config/configuracoes-ambiente.js";
 import {
   consultarMinhaAssinatura,
+  apresentarPedidoFinanceiro,
   ServicoPagamentosAssinaturas,
 } from "../application/pagamentos-assinaturas.service.js";
 import {
@@ -61,7 +71,8 @@ async function corpoJson(req: Request) {
     throw new ErroRegraNegocioHttp("Envie um objeto JSON válido.");
   }
 }
-export function validarPlanoComercial(dados: Record<string, unknown>) {
+export function validarPlanoComercial(dados: Record<string, unknown>, exigirId = false) {
+  if (exigirId) identificadorFinanceiro(dados.id);
   let valor: string;
   try {
     valor = decimalMonetario(dados.valor);
@@ -102,9 +113,11 @@ export function validarPlanoComercial(dados: Record<string, unknown>) {
   };
 }
 function servico() {
+  const config = carregarMercadoPago();
   return new ServicoPagamentosAssinaturas(
     new RepositorioPagamentosSupabase(criarClienteSupabaseAdministrativo()),
-    new ClienteMercadoPago(carregarMercadoPago()),
+    new ClienteMercadoPago(configuracaoOrdersLegada(config)),
+    new ClientePaymentsMercadoPago(config),
   );
 }
 function validarAgendador(req: Request) {
@@ -120,7 +133,14 @@ function validarAgendador(req: Request) {
     throw new ErroRegraNegocioHttp("Agendador não autorizado.", 401);
 }
 
-export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequisicao) {
+export function criarAtendedorFinanceiro(
+  criarCliente = criarClienteSupabaseRequisicao,
+  dependencias: {
+    criarAdmin?: typeof criarClienteSupabaseAdministrativo;
+    criarServico?: typeof servico;
+    agendar?: typeof after;
+  } = {},
+) {
   return async function atenderFinanceiro(req: NextRequest) {
     const requestId = randomUUID();
     const caminho = new URL(req.url).pathname.replace(/\/$/, "");
@@ -161,19 +181,34 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         aplicarCabecalhos(resposta);
         return resposta;
       }
+      if (caminho === "/api/financeiro/configuracao" && req.method === "GET")
+        return responder(
+          criarRespostaSucesso(configuracaoPublicaMercadoPago(), "Configuração de pagamento."),
+        );
       if (caminho === "/api/financeiro/webhook" && req.method === "POST") {
         const ip = ipConfiavel(req, ambiente.trustProxy);
         if (!ip && ambiente.production) exigirIp(req, ambiente.trustProxy);
         if (ip) limitesAplicacao.consumir("webhook-mp:" + ip, 600);
         const config = carregarMercadoPago();
-        const evento = validarAssinaturaMercadoPago(req, config.webhookSecret);
+        const tipo = url.searchParams.get("type");
+        const payment = /^\d{1,30}$/.test(url.searchParams.get("data.id") ?? "");
+        if (tipo && tipo !== (payment ? "payment" : "order"))
+          throw new ErroRegraNegocioHttp("Tópico inválido.", 401);
+        const evento = payment
+          ? validarWebhookPayments(req, config.webhookSecret)
+          : validarAssinaturaMercadoPago(
+              req,
+              process.env.MERCADO_PAGO_ORDERS_WEBHOOK_SIGNING_SECRET ?? config.webhookSecret,
+            );
         await corpoJson(req); // bounded envelope; no financial field from the body is trusted.
-        const pagamentos = servico();
+        const pagamentos = (dependencias.criarServico ?? servico)();
         await pagamentos.repo.executar("receber_webhook", {
           chave: evento.chave,
           order: evento.id,
+          provedor: payment ? "payments" : "orders",
+          ambiente: config.ambiente,
         });
-        after(async () => {
+        (dependencias.agendar ?? after)(async () => {
           try {
             await pagamentos.processarFila(2);
           } catch {
@@ -188,7 +223,7 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         validarAgendador(req);
         return responder(
           criarRespostaSucesso(
-            await servico().executarManutencao(),
+            await (dependencias.criarServico ?? servico)().executarManutencao(),
             "Manutenção financeira concluída.",
           ),
         );
@@ -214,7 +249,9 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
       if (caminho === "/api/financeiro/planos" && req.method === "GET") {
         const { data, error } = await cliente
           .from("planos_comerciais")
-          .select("id,codigo,nome,descricao,valor,duracao_meses,ativo,destaque,ordem,beneficios")
+          .select(
+            "id,codigo,nome,descricao,valor,moeda,duracao_meses,ativo,destaque,ordem,beneficios",
+          )
           .eq("ativo", true)
           .order("ordem");
         if (error) throw error;
@@ -242,10 +279,12 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
       if (!admin && usuario.tipo !== "estudante")
         throw new ErroRegraNegocioHttp("Esta operação é destinada a estudantes.", 403);
       if (req.method !== "GET") {
-        await new RepositorioPagamentosSupabase(criarClienteSupabaseAdministrativo()).executar(
-          "limitar_requisicao",
-          { chave: `${admin ? "admin" : "estudante"}:${pessoa}`, limite: admin ? 30 : 10 },
-        );
+        await new RepositorioPagamentosSupabase(
+          (dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo)(),
+        ).executar("limitar_requisicao", {
+          chave: `${admin ? "admin" : "estudante"}:${pessoa}`,
+          limite: admin ? 30 : 10,
+        });
       }
       let dados: unknown;
       if (caminho === "/api/financeiro/acesso" && req.method === "GET") {
@@ -256,38 +295,50 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         dados = await consultarMinhaAssinatura(cliente);
       } else if (caminho === "/api/financeiro/checkout" && req.method === "POST") {
         const corpo = await corpoJson(req);
-        if (Object.keys(corpo).some((k) => k !== "idPlano"))
-          throw new ErroRegraNegocioHttp("Envie somente o identificador do plano.");
-        dados = await servico().iniciarCheckout(
+        if (Object.keys(corpo).some((k) => !["idPlano", "pagamento"].includes(k)))
+          throw new ErroRegraNegocioHttp("Envie o plano e os dados do pagamento.");
+        dados = await (dependencias.criarServico ?? servico)().iniciarCheckout(
           pessoa,
           identificadorFinanceiro(corpo.idPlano),
           identificadorFinanceiro(req.headers.get("x-idempotency-key")),
+          validarPagamentoBrick(corpo.pagamento),
         );
       } else if (caminho === "/api/financeiro/pedido" && req.method === "GET") {
         const { data, error } = await cliente
           .from("pedidos_pagamento")
           .select(
-            "id,id_plano,plano_nome,valor,moeda,status,id_order_mp,checkout_url,criado_em,expira_em,duracao_meses,webhook_confirmado",
+            "id,id_plano,plano_nome,valor,moeda,status,id_order_mp,checkout_url,criado_em,expira_em,duracao_meses,provedor,id_pagamento_mp,status_pagamento_mp,detalhe_pagamento_mp,webhook_confirmado",
           )
           .eq("id", identificadorFinanceiro(url.searchParams.get("id")))
           .eq("id_pessoa", pessoa)
           .single();
         if (error || !data) throw new ErroRegraNegocioHttp("Pedido não encontrado.", 404);
-        dados = { ...data, valor: String(data.valor) };
+        dados = apresentarPedidoFinanceiro(data);
+        if (
+          data.provedor === "payments" &&
+          data.status_pagamento_mp === "pending" &&
+          data.detalhe_pagamento_mp === "pending_challenge"
+        ) {
+          const pagamentos = (dependencias.criarServico ?? servico)();
+          dados = await pagamentos.sincronizar(await pagamentos.repo.obterPedido(data.id));
+        }
       } else if (caminho === "/api/financeiro/sincronizar" && req.method === "POST") {
         const corpo = await corpoJson(req);
-        const pagamentos = servico();
+        const pagamentos = (dependencias.criarServico ?? servico)();
         const pedido = await pagamentos.repo.obterPedido(identificadorFinanceiro(corpo.id));
         if (pedido.id_pessoa !== pessoa)
           throw new ErroRegraNegocioHttp("Pedido não encontrado.", 404);
-        if (!pedido.id_order_mp) dados = await pagamentos.completarCheckout(pedido);
+        if (pedido.provedor === "orders" && !pedido.id_order_mp)
+          dados = await pagamentos.completarCheckout(pedido);
         else {
           await pagamentos.repo.executar("limitar_sincronizacao", { id: pedido.id });
           dados = await pagamentos.sincronizar(pedido);
         }
       } else if (caminho === "/api/financeiro/cancelamento" && req.method === "POST") {
         const corpo = await corpoJson(req);
-        const repo = new RepositorioPagamentosSupabase(criarClienteSupabaseAdministrativo());
+        const repo = new RepositorioPagamentosSupabase(
+          (dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo)(),
+        );
         dados = await repo.executar("solicitar_cancelamento", {
           pessoa,
           id: identificadorFinanceiro(corpo.id),
@@ -297,9 +348,11 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         const pagina = Number(url.searchParams.get("pagina") ?? "1");
         if (!Number.isInteger(pagina) || pagina < 1 || pagina > 100000)
           throw new ErroRegraNegocioHttp("Página inválida.");
+        const filtros = validarFiltrosFinanceiros(url);
         dados = await new RepositorioPagamentosSupabase(
-          criarClienteSupabaseAdministrativo(),
+          (dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo)(),
         ).executar("painel", {
+          ...filtros,
           administrador: pessoa,
           pagina,
           pessoa: url.searchParams.get("pessoa")
@@ -318,18 +371,18 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         ["POST", "PUT"].includes(req.method)
       ) {
         dados = await new RepositorioPagamentosSupabase(
-          criarClienteSupabaseAdministrativo(),
+          (dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo)(),
         ).executar("salvar_plano", {
-          ...validarPlanoComercial(await corpoJson(req)),
+          ...validarPlanoComercial(await corpoJson(req), req.method === "PUT"),
           administrador: pessoa,
         });
       } else if (caminho === "/api/financeiro/admin/reprocessar" && req.method === "POST") {
         dados = await new RepositorioPagamentosSupabase(
-          criarClienteSupabaseAdministrativo(),
+          (dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo)(),
         ).executar("reprocessar_eventos", { administrador: pessoa });
       } else if (caminho === "/api/financeiro/admin/sincronizar" && req.method === "POST") {
         const corpo = await corpoJson(req);
-        const pagamentos = servico();
+        const pagamentos = (dependencias.criarServico ?? servico)();
         const id = identificadorFinanceiro(corpo.id);
         await pagamentos.repo.executar("auditar", {
           administrador: pessoa,
@@ -341,7 +394,7 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         const corpo = await corpoJson(req);
         if (corpo.acao !== "cancelar" && corpo.acao !== "estornar")
           throw new ErroRegraNegocioHttp("Operação inválida.");
-        dados = await servico().operacaoAdministrativa(
+        dados = await (dependencias.criarServico ?? servico)().operacaoAdministrativa(
           identificadorFinanceiro(corpo.id),
           pessoa,
           corpo.acao,
@@ -361,8 +414,51 @@ export function criarAtendedorFinanceiro(criarCliente = criarClienteSupabaseRequ
         },
         "Operação financeira recusada",
       );
-      return responder(criarRespostaErro(resultado.status, resultado.message), resultado.status);
+      return responder(
+        {
+          ...criarRespostaErro(resultado.status, resultado.message),
+          ...(obterCodigoErroAplicacao(erro) === "PAYMENT_NOT_CREATED"
+            ? { code: "PAYMENT_NOT_CREATED", retryable: true }
+            : {}),
+        },
+        resultado.status,
+      );
     }
   };
 }
 export const atenderFinanceiro = criarAtendedorFinanceiro();
+
+export function validarFiltrosFinanceiros(url: URL) {
+  const ambiente = url.searchParams.get("ambiente");
+  if (ambiente !== null && !["teste", "producao"].includes(ambiente))
+    throw new ErroRegraNegocioHttp("Ambiente inválido.", 400);
+  const datas: Record<string, string | null> = {};
+  for (const k of ["de", "ate", "vencimento"]) {
+    const d = url.searchParams.get(k);
+    datas[k] = d;
+    if (
+      d !== null &&
+      (!/^\d{4}-\d{2}-\d{2}$/.test(d) ||
+        !Number.isFinite(Date.parse(d)) ||
+        new Date(d).toISOString().slice(0, 10) !== d)
+    )
+      throw new ErroRegraNegocioHttp("Data inválida.", 400);
+  }
+  if (datas.de && datas.ate && datas.de > datas.ate)
+    throw new ErroRegraNegocioHttp("Intervalo de datas inválido.", 400);
+  const status = url.searchParams.get("status");
+  if (
+    status !== null &&
+    ![
+      "pendente",
+      "processando",
+      "aprovado",
+      "rejeitado",
+      "cancelado",
+      "estornado",
+      "contestado",
+    ].includes(status)
+  )
+    throw new ErroRegraNegocioHttp("Status inválido.", 400);
+  return { ambiente };
+}

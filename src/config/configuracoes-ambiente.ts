@@ -152,6 +152,7 @@ export function carregarConfiguracoesAmbiente(
       from: obterTextoAmbiente("RESEND_SENDER_EMAIL_ADDRESS"),
       fromName: obterTextoAmbiente("RESEND_SENDER_DISPLAY_NAME", "Siso Aprova"),
       webhookSecret: obterTextoAmbiente("RESEND_WEBHOOK_SIGNING_SECRET"),
+      maintenanceSecret: obterTextoAmbiente("TRANSACTIONAL_EMAIL_MAINTENANCE_AUTHORIZATION_SECRET"),
       url: obterTextoAmbiente("RESEND_API_BASE_URL", "https://api.resend.com/"),
       worker: obterBooleanoAmbiente("TRANSACTIONAL_EMAIL_WORKER_ENABLED", true),
       interval: obterNumeroAmbiente("TRANSACTIONAL_EMAIL_WORKER_INTERVAL_SECONDS", 15, 2, 300),

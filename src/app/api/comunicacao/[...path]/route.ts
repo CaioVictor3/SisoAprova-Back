@@ -1,0 +1,10 @@
+import { atenderComunicacao } from "../../../../http/rotas-comunicacao-next.js";
+export const runtime = "nodejs";
+export const dynamic = "force-dynamic";
+export const maxDuration = 120;
+export const GET = atenderComunicacao;
+export const POST = atenderComunicacao;
+export const PUT = atenderComunicacao;
+export const PATCH = atenderComunicacao;
+export const DELETE = atenderComunicacao;
+export const OPTIONS = atenderComunicacao;

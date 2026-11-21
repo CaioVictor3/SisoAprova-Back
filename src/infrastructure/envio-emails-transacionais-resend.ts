@@ -18,6 +18,15 @@ import type { PendingEmail } from "./repositorio-contas-sessoes-postgresql.js";
 import { validarUrlHttps, type HttpFetch } from "./seguranca-requisicoes-https.js";
 import type { PersistenciaWorkerEmailsSupabase } from "./persistencia-worker-emails-supabase.js";
 
+export interface ResumoCicloWorkerEmails {
+  reservados: number;
+  aceitos: number;
+  falhas: number;
+  cancelados: number;
+  devolvidos: number;
+  manutencaoExecutada: boolean;
+}
+
 interface EmailTransacionalReservado {
   idEmailTransacional: string;
   tipo_evento: string;
@@ -449,6 +458,10 @@ export class ServicoEnvioEmailsTransacionaisResend {
       return true;
     }
 
+    if (this.config.auth.key.length < 64) {
+      throw new FalhaEntregaEmailTransacional("chave_legada_indisponivel", false);
+    }
+
     const url = new URL(
       descriptografarConteudoAutenticado(email.link_protegido, this.config.auth.key),
     );
@@ -509,6 +522,10 @@ export class ServicoEnvioEmailsTransacionaisResend {
       throw new Error("Tipo de e-mail não reconhecido.");
     }
 
+    if (email.link_protegido && this.config.auth.key.length < 64) {
+      throw new FalhaEntregaEmailTransacional("chave_legada_indisponivel", false);
+    }
+
     const origin = new URL(this.config.auth.clientUrl);
 
     const link = email.link_protegido
@@ -533,7 +550,9 @@ export class ServicoEnvioEmailsTransacionaisResend {
 
     const safeLink = escaparHtmlMensagemEmail(link);
 
-    const greeting = name.trim() ? `Olá, ${escaparHtmlMensagemEmail(name)}!` : "Olá!";
+    const nomeLimpo = name.trim();
+    const saudacaoTexto = nomeLimpo ? `Olá, ${nomeLimpo}!` : "Olá!";
+    const greeting = nomeLimpo ? `Olá, ${escaparHtmlMensagemEmail(nomeLimpo)}!` : "Olá!";
 
     const notice = ["EMAIL_VERIFICATION", "PASSWORD_RESET"].includes(email.tipo_evento)
       ? '<p style="color:#64748b;font-size:13px">Se você não solicitou este e-mail, pode ignorá-lo.</p>'
@@ -543,20 +562,27 @@ export class ServicoEnvioEmailsTransacionaisResend {
 
     return {
       html,
-      text: `${name},\n\n${action[1]}\n\n${link}\n\n${email.tipo_evento === "USER_INACTIVE" ? "Desative estes lembretes em Minha conta." : "Se não solicitou este e-mail, ignore-o."}\n\n${this.config.email.appName}`,
+      text: `${saudacaoTexto}\n\n${action[1]}\n\n${link}\n\n${email.tipo_evento === "USER_INACTIVE" ? "Desative estes lembretes em Minha conta." : "Se não solicitou este e-mail, ignore-o."}\n\n${this.config.email.appName}`,
     };
   }
 
   async enviarEmailResend(email: EmailTransacionalReservado, sinalCancelamento?: AbortSignal) {
     const configuracoesServico = this.config.email;
+    const enderecoRemetente = configuracoesServico.from.replace(/[\r\n<>]+/g, "").trim();
 
-    if (!configuracoesServico.key || !configuracoesServico.from) {
+    if (!configuracoesServico.key.trim() || !enderecoRemetente) {
       throw new FalhaEntregaEmailTransacional("provedor_nao_configurado", false);
     }
 
     if (!validarUrlHttps(configuracoesServico.url)) {
       throw new FalhaEntregaEmailTransacional("provedor_nao_configurado", true);
     }
+
+    const nomeRemetente = configuracoesServico.fromName
+      .replace(/[\r\n<>]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const remetente = nomeRemetente ? `${nomeRemetente} <${enderecoRemetente}>` : enderecoRemetente;
 
     const content = this.renderizarConteudoEmail(email);
 
@@ -569,7 +595,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: `${configuracoesServico.fromName} <${configuracoesServico.from}>`,
+          from: remetente,
           to: [email.email_destinatario],
           subject: email.assunto,
           ...content,
@@ -628,7 +654,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
       if (!(await this.fluxoEstaHabilitado(email.tipo_evento))) {
         await this.executarConsultaEmail("devolverEmailAguardandoAtivacao", params);
 
-        return;
+        return "devolvido" as const;
       }
 
       if (!(await this.podeEnviarEmail(email))) {
@@ -637,7 +663,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
           motivo: "link_expirado_ou_preferencia_desativada",
         });
 
-        return;
+        return "cancelado" as const;
       }
 
       const identificadorEmail = await this.enviarEmailResend(email, sinalCancelamento);
@@ -665,9 +691,10 @@ export class ServicoEnvioEmailsTransacionaisResend {
         { emailId: email.idEmailTransacional, type: email.tipo_evento },
         "Email aceito pelo provedor",
       );
+      return "aceito" as const;
     } catch (error) {
       if (sinalCancelamento.aborted) {
-        return;
+        return "abortado" as const;
       }
 
       const permanent = error instanceof FalhaEntregaEmailTransacional && error.permanent;
@@ -700,6 +727,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
         { emailId: email.idEmailTransacional, code },
         "Falha no processamento de email",
       );
+      return "falha" as const;
     }
   }
 
@@ -707,7 +735,16 @@ export class ServicoEnvioEmailsTransacionaisResend {
     registradorEventos: Logger,
     sinalCancelamento: AbortSignal,
     maintenance: boolean,
-  ) {
+  ): Promise<ResumoCicloWorkerEmails> {
+    const resumo: ResumoCicloWorkerEmails = {
+      reservados: 0,
+      aceitos: 0,
+      falhas: 0,
+      cancelados: 0,
+      devolvidos: 0,
+      manutencaoExecutada: false,
+    };
+
     if (maintenance) {
       await this.executarConsultaEmail("limparHistoricoEmailsAntigos", {
         dias: this.config.email.retention,
@@ -729,16 +766,31 @@ export class ServicoEnvioEmailsTransacionaisResend {
           limite: this.config.email.batch,
         });
       }
+
+      resumo.manutencaoExecutada = true;
     }
 
     if (this.config.email.key && this.config.email.from) {
-      for (const email of await this.reservarLoteEmails()) {
+      const reservados = await this.reservarLoteEmails();
+      resumo.reservados = reservados.length;
+
+      for (const email of reservados) {
         if (sinalCancelamento.aborted) {
           break;
         }
 
-        await this.processarEmailReservado(email, registradorEventos, sinalCancelamento);
+        const resultado = await this.processarEmailReservado(
+          email,
+          registradorEventos,
+          sinalCancelamento,
+        );
+        if (resultado === "aceito") resumo.aceitos += 1;
+        else if (resultado === "falha") resumo.falhas += 1;
+        else if (resultado === "cancelado") resumo.cancelados += 1;
+        else if (resultado === "devolvido") resumo.devolvidos += 1;
       }
     }
+
+    return resumo;
   }
 }

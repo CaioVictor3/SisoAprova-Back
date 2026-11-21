@@ -137,11 +137,15 @@ function responder(
   return resposta;
 }
 
-async function processarWebhook(requisicao: Request) {
+async function processarWebhook(
+  requisicao: Request,
+  servicoEmails: Pick<ServicoEnvioEmailsTransacionaisResend, "validarAssinaturaWebhook"> = emails,
+  criarAdmin: typeof criarClienteSupabaseAdministrativo = criarClienteSupabaseAdministrativo,
+) {
   const bytes = await lerBytesLimitados(requisicao, 65536);
   if (
     bytes.length > 65536 ||
-    !emails.validarAssinaturaWebhook(
+    !servicoEmails.validarAssinaturaWebhook(
       requisicao.headers.get("svix-id") ?? "",
       requisicao.headers.get("svix-timestamp") ?? "",
       requisicao.headers.get("svix-signature") ?? "",
@@ -160,20 +164,23 @@ async function processarWebhook(requisicao: Request) {
     throw new ErroRegraNegocioHttp("Evento inválido.");
   }
   if (evento.type.trim() && evento.data.email_id.trim()) {
-    const { error } = await criarClienteSupabaseAdministrativo().rpc(
-      "registrar_evento_resend_backend",
-      {
-        p_webhook: requisicao.headers.get("svix-id")!,
-        p_idmensagem: evento.data.email_id,
-        p_evento: evento.type,
-      },
-    );
+    const { error } = await criarAdmin().rpc("registrar_evento_resend_backend", {
+      p_webhook: requisicao.headers.get("svix-id")!,
+      p_idmensagem: evento.data.email_id,
+      p_evento: evento.type,
+    });
     if (error) throw error;
   }
   return criarRespostaSucesso({ recebido: true }, "Evento recebido.");
 }
 
-export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao) {
+export function criarAtendedorHttp(
+  criarCliente = criarClienteSupabaseRequisicao,
+  dependencias: {
+    criarAdmin?: typeof criarClienteSupabaseAdministrativo;
+    emails?: Pick<ServicoEnvioEmailsTransacionaisResend, "validarAssinaturaWebhook">;
+  } = {},
+) {
   return async function atenderRequisicaoApiNext(requisicao: Request, _contexto: ContextoNext) {
     const identificador = randomUUID();
     const url = new URL(requisicao.url);
@@ -272,7 +279,11 @@ export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao
         if (!ipWebhook && config.production) exigirIp(requisicao, config.trustProxy);
         if (ipWebhook) limitarRequisicoes("webhook-resend:" + ipWebhook, 600);
         return responder(
-          await processarWebhook(requisicao),
+          await processarWebhook(
+            requisicao,
+            dependencias.emails ?? emails,
+            dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo,
+          ),
           200,
           requisicao,
           identificador,

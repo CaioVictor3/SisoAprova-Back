@@ -87,7 +87,7 @@ export const consultasSqlEmailsTransacionais = {
             set status='pendente',quantidade_tentativas=0,proxima_tentativa_em=null,mensagem_erro=null,
                 identificador_processamento=null,expiracao_reserva_em=null
             where "idEmailTransacional"=@id and status='falha'
-              and tipo_evento in ('WELCOME_EMAIL','USER_INACTIVE')
+              and tipo_evento in ('WELCOME_EMAIL','USER_INACTIVE','SUBSCRIPTION_EXPIRING')
               and id_mensagem_provedor is null and mensagem_erro ~ '^resend_http_4[0-9]{2}$'
               and mensagem_erro not in ('resend_http_408','resend_http_429')`,
 } as const;
