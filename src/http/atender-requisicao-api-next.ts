@@ -5,6 +5,7 @@ import { restringirRecuperacao } from "../security/sessoes.js";
 import {
   ipConfiavel,
   exigirIp,
+  producaoExigeIp,
   limitarAutenticacao,
   limitesAplicacao,
 } from "../security/rate-limit.js";
@@ -48,6 +49,8 @@ import { temCookieSessaoSupabase } from "../utils/supabase/opcoes-cookie-sessao.
 import { RepositorioConsultasNegocioSupabase } from "../infrastructure/repositorio-consultas-supabase.js";
 import { ServicoComunicacaoSupabase } from "../infrastructure/comunicacao-supabase.js";
 import { criarClienteSupabaseAdministrativo } from "../utils/supabase/admin.js";
+
+import { PersistenciaWorkerEmailsSupabase } from "../infrastructure/persistencia-worker-emails-supabase.js";
 
 const config = carregarConfiguracoesAmbiente(process.env, { supabase: true });
 const logger = pino({
@@ -178,6 +181,10 @@ export function criarAtendedorHttp(
   criarCliente = criarClienteSupabaseRequisicao,
   dependencias: {
     criarAdmin?: typeof criarClienteSupabaseAdministrativo;
+    emailsAutenticacao?: Pick<
+      ServicoEnvioEmailsTransacionaisResend,
+      "enviarEmailAutenticacaoImediato" | "executarCicloWorker"
+    >;
     emails?: Pick<ServicoEnvioEmailsTransacionaisResend, "validarAssinaturaWebhook">;
   } = {},
 ) {
@@ -276,7 +283,8 @@ export function criarAtendedorHttp(
 
       if (caminho === "/api/ResendWebhook/registrar-evento-entrega" && metodo === "POST") {
         const ipWebhook = ipConfiavel(requisicao, config.trustProxy);
-        if (!ipWebhook && config.production) exigirIp(requisicao, config.trustProxy);
+        if (!ipWebhook && producaoExigeIp(requisicao, config.trustProxy, config.production))
+          exigirIp(requisicao, config.trustProxy);
         if (ipWebhook) limitarRequisicoes("webhook-resend:" + ipWebhook, 600);
         return responder(
           await processarWebhook(
@@ -321,7 +329,8 @@ export function criarAtendedorHttp(
           if (identidade.data.user && !identidade.error)
             limitarRequisicoes("auth-user:" + identidade.data.user.id, 30);
           else if (ip) limitarRequisicoes("auth-ip:" + ip, 30);
-          else if (config.production) exigirIp(requisicao, config.trustProxy);
+          else if (producaoExigeIp(requisicao, config.trustProxy, config.production))
+            exigirIp(requisicao, config.trustProxy);
           else {
             const dados = (await lerAuth()) as {
               token?: unknown;
@@ -344,6 +353,31 @@ export function criarAtendedorHttp(
           lerAuth,
           origem && config.origins.includes(origem) ? origem : config.auth.clientUrl || undefined,
           {
+            ...(config.email.key.trim() &&
+            config.email.from.trim() &&
+            process.env.SUPABASE_SERVER_SECRET_API_KEY?.trim()
+              ? (() => {
+                  const criarAdmin = dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo;
+                  const servico =
+                    dependencias.emailsAutenticacao ??
+                    new ServicoEnvioEmailsTransacionaisResend(
+                      db,
+                      config,
+                      fetch,
+                      new PersistenciaWorkerEmailsSupabase(criarAdmin()),
+                    );
+                  return {
+                    criarAdmin,
+                    enviarEmailAutenticacao: (
+                      dados: Parameters<
+                        ServicoEnvioEmailsTransacionaisResend["enviarEmailAutenticacaoImediato"]
+                      >[0],
+                    ) => servico.enviarEmailAutenticacaoImediato(dados, requisicao.signal),
+                    enviarBoasVindas: () =>
+                      servico.executarCicloWorker(logger, requisicao.signal, false),
+                  };
+                })()
+              : {}),
             bearerToken: tokenBearer,
             reautenticar: reautenticarSenha,
             revogarBearer: async (token) => {
@@ -423,7 +457,9 @@ export function criarAtendedorHttp(
       const enderecoCliente = () =>
         usuario.id ||
         ipConfiavel(requisicao, config.trustProxy) ||
-        (config.production ? exigirIp(requisicao, config.trustProxy) : null);
+        (producaoExigeIp(requisicao, config.trustProxy, config.production)
+          ? exigirIp(requisicao, config.trustProxy)
+          : null);
       if (rota?.controller === "Autenticacao" || rota?.controller === "Navegador") {
         const id = enderecoCliente();
         if (id) limitarRequisicoes("auth:" + id, 10);

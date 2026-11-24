@@ -7,7 +7,12 @@ import { cookiesParaResposta } from "../security/cookies.js";
 import { lerBytesLimitados } from "../security/corpo.js";
 import { aplicarCabecalhos, redacaoLogs } from "../security/headers.mjs";
 import { restringirRecuperacao } from "../security/sessoes.js";
-import { ipConfiavel, exigirIp, limitesAplicacao } from "../security/rate-limit.js";
+import {
+  ipConfiavel,
+  exigirIp,
+  limitesAplicacao,
+  producaoExigeIp,
+} from "../security/rate-limit.js";
 import { createHash, randomUUID, timingSafeEqual } from "node:crypto";
 import { pino } from "pino";
 import { after, NextResponse, type NextRequest } from "next/server";
@@ -187,7 +192,8 @@ export function criarAtendedorFinanceiro(
         );
       if (caminho === "/api/financeiro/webhook" && req.method === "POST") {
         const ip = ipConfiavel(req, ambiente.trustProxy);
-        if (!ip && ambiente.production) exigirIp(req, ambiente.trustProxy);
+        if (!ip && producaoExigeIp(req, ambiente.trustProxy, ambiente.production))
+          exigirIp(req, ambiente.trustProxy);
         if (ip) limitesAplicacao.consumir("webhook-mp:" + ip, 600);
         const config = carregarMercadoPago();
         const tipo = url.searchParams.get("type");

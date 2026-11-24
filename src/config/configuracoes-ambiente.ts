@@ -84,6 +84,13 @@ export function carregarConfiguracoesAmbiente(
     }
   }
 
+  for (const origin of [...origins]) {
+    const url = new URL(origin);
+    if (url.protocol === "http:" && ["localhost", "127.0.0.1"].includes(url.hostname)) {
+      url.hostname = url.hostname === "localhost" ? "127.0.0.1" : "localhost";
+      if (!origins.includes(url.origin)) origins.push(url.origin);
+    }
+  }
   return {
     production,
     host: obterTextoAmbiente("HOST", "127.0.0.1"),

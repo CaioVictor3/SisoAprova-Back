@@ -76,6 +76,15 @@ export async function atenderAutenticacaoSupabaseNext(
   lerCorpo: () => Promise<unknown>,
   origemFrontend?: string,
   opcoes: {
+    criarAdmin?: () => SupabaseClient;
+    enviarEmailAutenticacao?: (dados: {
+      tipoEvento: "EMAIL_VERIFICATION" | "PASSWORD_RESET";
+      idUsuario: string | null;
+      emailDestinatario: string;
+      nome?: string;
+      link: string;
+    }) => Promise<unknown>;
+    enviarBoasVindas?: () => Promise<unknown>;
     bearerToken?: string;
     revogarBearer?: (token: string) => Promise<void>;
     reautenticar?: (email: string, senha: string, id: string) => Promise<void>;
@@ -125,6 +134,40 @@ export async function atenderAutenticacaoSupabaseNext(
       false,
     );
     const pessoa = validarDadosPessoais(dados.pessoa);
+    const email = emailValido(dados.email);
+    const senha = senhaValida(dados.senha);
+    if (opcoes.criarAdmin && opcoes.enviarEmailAutenticacao) {
+      const resultado = await opcoes.criarAdmin().auth.admin.generateLink({
+        type: "signup",
+        email,
+        password: senha,
+        options: { data: { pessoa }, redirectTo: retorno("/autenticacao/confirmar-email") },
+      });
+      if (resultado.error)
+        throw new ErroRegraNegocioHttp(
+          ["user_already_exists", "email_exists"].includes(resultado.error.code ?? "")
+            ? "Confira seu e-mail para continuar."
+            : "Não foi possível concluir o cadastro. Confira seus dados e tente novamente.",
+          resultado.error.status === 429 ? 429 : 400,
+        );
+      const token = resultado.data.properties?.hashed_token;
+      if (!token)
+        throw new ErroRegraNegocioHttp(
+          "O envio de e-mails está temporariamente indisponível.",
+          503,
+        );
+      await opcoes.enviarEmailAutenticacao({
+        tipoEvento: "EMAIL_VERIFICATION",
+        idUsuario: resultado.data.user?.id ?? null,
+        emailDestinatario: email,
+        nome: pessoa.nome_completo,
+        link: `${retorno("/autenticacao/confirmar-email")}?token_hash=${encodeURIComponent(token)}&type=email`,
+      });
+      return criarRespostaSucesso(
+        { idUsuario: resultado.data.user?.id ?? randomUUID(), confirmacaoEmailNecessaria: true },
+        "Cadastro recebido. Confira seu e-mail para continuar.",
+      );
+    }
     const resultado = await supabase.auth.signUp({
       email: emailValido(dados.email),
       password: senhaValida(dados.senha),
@@ -147,6 +190,81 @@ export async function atenderAutenticacaoSupabaseNext(
   }
   if (acao === "solicitar-recuperacao-senha" || acao === "reenviar-confirmacao") {
     const email = emailValido((await corpo()).email);
+    const respostaNeutra = () =>
+      mensagem("Se houver uma conta para este e-mail, você receberá as instruções para continuar.");
+    if (opcoes.criarAdmin && opcoes.enviarEmailAutenticacao) {
+      const admin = opcoes.criarAdmin();
+      const recuperacao = acao === "solicitar-recuperacao-senha";
+      let nome: string | undefined;
+      let protegido = recuperacao;
+      if (!recuperacao) {
+        const perfil = await admin
+          .from("usuarios")
+          .select("nome_completo,estado_cadastro")
+          .eq("email", email)
+          .maybeSingle();
+        if (perfil.error)
+          throw new ErroRegraNegocioHttp(
+            "O envio de e-mails está temporariamente indisponível.",
+            503,
+          );
+        if (!perfil.data || perfil.data.estado_cadastro !== "verificacao_pendente")
+          return respostaNeutra();
+        nome = perfil.data.nome_completo;
+        const protecao = await admin.rpc("preservar_senha_usuario_auth_backend");
+        protegido = !protecao.error && protecao.data === true;
+      }
+      if (protegido) {
+        const rota = recuperacao
+          ? "/autenticacao/redefinir-senha"
+          : "/autenticacao/confirmar-email";
+        const resultado = await admin.auth.admin.generateLink({
+          type: recuperacao ? "recovery" : "magiclink",
+          email,
+          options: { redirectTo: retorno(rota) },
+        });
+        if (resultado.error) {
+          if (resultado.error.status === 429)
+            throw new ErroRegraNegocioHttp(
+              "Aguarde um momento antes de solicitar outro e-mail.",
+              429,
+            );
+          if ((resultado.error.status ?? 0) >= 500)
+            throw new ErroRegraNegocioHttp(
+              "O envio de e-mails está temporariamente indisponível.",
+              503,
+            );
+          return respostaNeutra();
+        }
+        const token = resultado.data.properties?.hashed_token;
+        if (!token)
+          throw new ErroRegraNegocioHttp(
+            "O envio de e-mails está temporariamente indisponível.",
+            503,
+          );
+        if (recuperacao && resultado.data.user?.id) {
+          try {
+            const perfil = await admin
+              .from("usuarios")
+              .select("nome_completo")
+              .eq("idUsuario", resultado.data.user.id)
+              .maybeSingle();
+            nome = perfil.data?.nome_completo;
+          } catch {
+            /* Nome é opcional. */
+          }
+        }
+        await opcoes.enviarEmailAutenticacao({
+          tipoEvento: recuperacao ? "PASSWORD_RESET" : "EMAIL_VERIFICATION",
+          idUsuario: resultado.data.user?.id ?? null,
+          emailDestinatario: email,
+          nome,
+          link: `${retorno(rota)}?token_hash=${encodeURIComponent(token)}&type=${recuperacao ? "recovery" : "email"}`,
+        });
+        return respostaNeutra();
+      }
+      // Sem a migration de proteção, reenvio permanece no Auth e não gera magiclink.
+    }
     const r =
       acao === "solicitar-recuperacao-senha"
         ? await supabase.auth.resetPasswordForEmail(email, {
@@ -171,17 +289,30 @@ export async function atenderAutenticacaoSupabaseNext(
       throw new ErroRegraNegocioHttp("Link inválido ou expirado.");
     const [tipo, ...partes] = token.split(":");
     const valor = partes.join(":");
-    const resultado =
+    let resultado =
       tipo === "codigo"
         ? await supabase.auth.exchangeCodeForSession(valor)
         : await supabase.auth.verifyOtp({
             token_hash: valor || token,
             type: tipo === "recovery" ? "recovery" : "email",
           });
+    if (resultado.error && tipo !== "codigo" && tipo !== "recovery") {
+      for (const subtipo of ["signup", "magiclink"] as const) {
+        resultado = await supabase.auth.verifyOtp({ token_hash: valor || token, type: subtipo });
+        if (!resultado.error) break;
+      }
+    }
     if (resultado.error)
       throw new ErroRegraNegocioHttp(
         "O link expirou ou já foi utilizado. Solicite um novo e-mail.",
       );
+    if (tipo !== "recovery" && opcoes.enviarBoasVindas) {
+      try {
+        await opcoes.enviarBoasVindas();
+      } catch {
+        /* A fila preserva a retentativa. */
+      }
+    }
     return mensagem("E-mail validado. Continue para acessar sua conta.");
   }
   if (acao === "iniciar-google" || acao === "iniciar-vinculo-google") {

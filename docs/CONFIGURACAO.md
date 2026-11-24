@@ -73,3 +73,14 @@ Para migrar uma instalação que já usa variáveis privadas na hospedagem, mant
 ## Segurança do runtime
 
 Consulte [SEGURANCA-OPERACAO.md](SEGURANCA-OPERACAO.md) antes de implantar: store SQLite requer diretório privado gravável .cache/seguranca, configuração de proxy válida em produção e Node compatível. Sem IP confiável, fluxos anônimos sensíveis falham503 em produção; desenvolvimento direto permanece utilizável por cota de conta/email. Opção1 exige CORS ausente, não vazio. Este lote não altera nenhuma variável real nem aplica migrations.
+
+
+### Autenticação com Resend e sessão local
+
+Com `RESEND_API_KEY`, `RESEND_SENDER_EMAIL_ADDRESS` e `SUPABASE_SERVER_SECRET_API_KEY`, o backend gera links pelo Admin Auth e envia diretamente pelo Resend, independentemente do worker habilitado. Os links usam `token_hash` e nunca são gravados no histórico. A migration `20261121173000_autenticacao_emails_resend_identidade.sql` preserva senhas em reenvios e registra mensagens aceitas, inclusive webhooks recebidos antes do registro. Sem essa migration, o reenvio usa `auth.resend` com segurança; o registro de envios imediatos é opcional e não interrompe o envio já aceito. Sem configuração Resend/Admin, os fluxos usam Supabase Auth.
+
+Para usar também os templates no painel: Authentication → Email Templates → Confirm signup / Reset password. Cole respectivamente `docs/templates-supabase-auth/confirmar-cadastro.html` e `recuperar-senha.html`. Configure Site URL para a origem do frontend. Não altere os placeholders `{{ .SiteURL }}` e `{{ .TokenHash }}`. Referências: https://supabase.com/docs/reference/javascript/auth-admin-generatelink e https://supabase.com/docs/reference/javascript/auth-verifyotp.
+
+Em HTTP loopback (`localhost`, `127.0.0.1`, `[::1]`), mesmo com `npm start`, cookies usam HttpOnly, SameSite=Lax e Secure=false. Em HTTPS de produção mantêm prefixo __Host-, Secure, SameSite=None e Partitioned. Hosts localhost e 127.0.0.1 entram juntos na lista CORS; cookies continuam vinculados ao host, portanto use o mesmo host para frontend e backend. Após atualizar código, reconstrua os artefatos antes de `npm start`.
+
+Recuperação operacional: interrompa o processo local, restaure o código/artefatos anteriores se necessário e mantenha a migration incremental (não remove dados nem muda contratos). A proteção impede limpar uma senha existente; trocas para outra senha não vazia continuam permitidas. Aplicação remota e homologação real exigem operação autorizada separada.
