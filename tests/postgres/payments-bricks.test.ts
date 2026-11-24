@@ -60,7 +60,9 @@ test(
         duplicarSearch = false,
         timeoutDepois = false,
         rejeitarCriacao400 = false,
-        pendingChallenge = false;
+        pendingChallenge = false,
+        aprovarNaCriacao = false,
+        truncarLeituraGet = false;
       const http: typeof fetch = async (url, init) => {
         const u = new URL(String(url));
         if (u.pathname === "/v1/payment_methods")
@@ -82,15 +84,21 @@ test(
           const body = JSON.parse(String(init.body));
           const p: PaymentMercadoPago = {
             id: String(++seq),
-            status: "pending",
-            status_detail: pendingChallenge ? "pending_challenge" : "pending_waiting_transfer",
+            status: aprovarNaCriacao ? "approved" : "pending",
+            status_detail: aprovarNaCriacao
+              ? "accredited"
+              : pendingChallenge
+                ? "pending_challenge"
+                : "pending_waiting_transfer",
             transaction_amount: body.transaction_amount,
             external_reference: body.external_reference,
             currency_id: "BRL",
             collector_id: "1234",
             application_id: "5678",
             live_mode: false,
-            date_last_updated: new Date().toISOString(),
+            date_last_updated: aprovarNaCriacao
+              ? "2026-11-24T19:10:26.935-04:00"
+              : new Date().toISOString(),
             payment_method_id: body.payment_method_id,
             payment_type_id: body.payment_method_id === "pix" ? "bank_transfer" : "credit_card",
             ...(pendingChallenge
@@ -111,7 +119,9 @@ test(
         gets++;
         const p = recursos.get(id);
         if (!p) throw new Error("Recurso fixture ausente");
-        return Response.json(p);
+        return Response.json(
+          truncarLeituraGet ? { ...p, date_last_updated: "2026-11-24T19:10:26.000-04:00" } : p,
+        );
       };
       const mp = new ClientePaymentsMercadoPago(configPayments, http);
       const svc = new ServicoPagamentosAssinaturas(
@@ -206,6 +216,56 @@ test(
           remote.date_last_updated = new Date(Date.now() + 1000).toISOString();
           await svc.sincronizar(p);
           pendingChallenge = false;
+        },
+      );
+      await t.test(
+        "aprovação instantânea confirma webhook truncado no mesmo segundo e preserva milissegundos",
+        async () => {
+          aprovarNaCriacao = true;
+          const p = await svc.iniciarCheckout(outro, planos[0].id, randomUUID(), pix);
+          aprovarNaCriacao = false;
+          assert.equal(p.status, "aprovado");
+          assert.equal(p.statusPagamentoMp, "approved");
+          assert.equal(p.webhook_confirmado, false);
+          const msInicial = await c.admin.query(
+            "select extract(milliseconds from ultima_versao_mp)::integer ms from public.pedidos_pagamento where id=$1",
+            [p.id],
+          );
+          assert.equal(msInicial.rows[0].ms, 26935);
+
+          truncarLeituraGet = true;
+          await svc.sincronizar(p);
+          assert.equal((await repo.obterPedido(p.id)).webhook_confirmado, false);
+          await rpc("receber_webhook", {
+            chave: "payment-truncated-" + p.id,
+            order: p.idPagamentoMp,
+            provedor: "payments",
+            ambiente: "teste",
+          });
+          assert.equal((await svc.processarFila()).processados, 1);
+          truncarLeituraGet = false;
+
+          const final = await repo.obterPedido(p.id);
+          assert.equal(final.status, "aprovado");
+          assert.equal(final.webhook_confirmado, true);
+          const dados = await c.admin.query(
+            "select extract(milliseconds from p.ultima_versao_mp)::integer ms, a.status, a.inicio_em, a.fim_em from public.pedidos_pagamento p join public.assinaturas a on a.id_pedido=p.id where p.id=$1",
+            [p.id],
+          );
+          assert.equal(dados.rows[0].ms, 26935);
+          assert.equal(dados.rows[0].status, "ativa");
+          assert.ok(dados.rows[0].inicio_em);
+          assert.ok(dados.rows[0].fim_em);
+
+          const eventoAntigo = {
+            ...recursos.get(p.idPagamentoMp!)!,
+            status: "rejected",
+            status_detail: "cc_rejected_other_reason",
+            date_last_updated: "2026-11-24T19:10:25.900-04:00",
+          };
+          await svc.aplicarPayment(final, eventoAntigo, false);
+          assert.equal((await repo.obterPedido(p.id)).status, "aprovado");
+          assert.equal((await repo.obterPedido(p.id)).webhook_confirmado, true);
         },
       );
       await t.test(
