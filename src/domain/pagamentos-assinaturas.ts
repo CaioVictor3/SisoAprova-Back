@@ -26,6 +26,11 @@ export interface PedidoPagamento {
   status: StatusPagamento;
   chave_idempotencia: string;
   referencia_externa: string;
+  provedor: "orders" | "payments";
+  idPagamentoMp: string | null;
+  statusPagamentoMp: string | null;
+  status_detail: string | null;
+  webhook_confirmado: boolean;
   id_order_mp: string | null;
   checkout_url: string | null;
   criado_em: string;

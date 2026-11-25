@@ -8,6 +8,16 @@ import {
   type PedidoPagamento,
 } from "../domain/pagamentos-assinaturas.js";
 
+// A first-attempt explicit validation/auth failure cannot have created a payment.
+export class ErroPagamentoNaoCriado extends ErroRegraNegocioHttp {
+  constructor() {
+    super(
+      "O pagamento não foi criado. Confira os dados e gere um novo formulário para tentar novamente.",
+      400,
+      "PAYMENT_NOT_CREATED",
+    );
+  }
+}
 export interface OrderMercadoPago {
   id: string;
   type: string;
@@ -95,7 +105,7 @@ export class ClienteMercadoPago {
     readonly config: ConfiguracaoMercadoPago,
     private readonly http: typeof fetch = fetch,
   ) {}
-  private async solicitar<T = OrderMercadoPago>(
+  protected async solicitar<T = OrderMercadoPago>(
     caminho: string,
     method = "GET",
     body?: unknown,
@@ -130,6 +140,13 @@ export class ClienteMercadoPago {
         );
         continue;
       }
+      if (
+        caminho === "/v1/payments" &&
+        method === "POST" &&
+        tentativa === 0 &&
+        [400, 401, 403, 422].includes(response.status)
+      )
+        throw new ErroPagamentoNaoCriado();
       // Never return provider bodies: they can contain payer data or credentials.
       throw new ErroRegraNegocioHttp(
         `Mercado Pago temporariamente indisponível (HTTP ${response.status}).`,

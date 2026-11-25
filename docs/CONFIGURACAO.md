@@ -35,6 +35,52 @@ O runtime Next.js e os workers consultam a Data API do Supabase. `POSTGRESQL_CON
 
 Para migrar uma instalação que já usa variáveis privadas na hospedagem, mantenha os valores e atualize os nomes conforme o exemplo. Em particular, `SUPABASE_URL`, `SUPABASE_PUBLISHABLE_KEY` e `SUPABASE_SECRET_KEY` passam a usar os nomes da tabela acima. `AUTH_CLIENT_URL` passa a ser `FRONTEND_APPLICATION_URL`.
 
+## Servidor de e-mails transacionais (Resend e Supabase Auth)
+
+### 1. Domínio próprio e DNS no Resend
+- Cadastre e verifique o domínio remetente no painel do Resend (ex.: `notificacoes.seu-dominio.com` ou `seu-dominio.com`).
+- Publique no provedor de DNS os registros exigidos pelo Resend:
+  - **SPF** (`TXT` e `MX` do subdomínio de envio/bounce indicado pelo Resend);
+  - **DKIM** (`TXT` `resend._domainkey`);
+  - **DMARC** (`TXT` `_dmarc`, ex.: `v=DMARC1; p=none;`).
+- Configure `RESEND_SENDER_EMAIL_ADDRESS` com um endereço pertencente ao domínio verificado e `RESEND_SENDER_DISPLAY_NAME=Siso Aprova`.
+
+### 2. API Key e Webhook de eventos do Resend
+- Gere uma API Key com permissão de envio no Resend e defina `RESEND_API_KEY`.
+- No painel do Resend (**Webhooks**), cadastre o endpoint HTTPS da API:
+  - **URL**: `https://<sua-api>/api/ResendWebhook/registrar-evento-entrega`
+  - **Eventos**: `email.delivered`, `email.bounced`, `email.complained` e `email.failed`.
+- Copie o segredo de assinatura Svix (`whsec_...`) para `RESEND_WEBHOOK_SIGNING_SECRET`.
+
+### 3. Processamento da fila: Cron HTTP e Worker dedicado
+- A fila `comunicacao.emails_transacionais` processa `WELCOME_EMAIL` (disparado na confirmação de e-mail em `auth.users`), `SUBSCRIPTION_EXPIRING` (gerado pela manutenção financeira em `POST /api/financeiro/tarefas` ou `npm run worker:pagamentos`), `USER_INACTIVE` (quando habilitado) e eventuais registros de `EMAIL_VERIFICATION` / `PASSWORD_RESET`.
+- **Opção A — Cron HTTP (`POST /api/comunicacao/tarefas`)**:
+  - Defina `TRANSACTIONAL_EMAIL_MAINTENANCE_AUTHORIZATION_SECRET` com pelo menos 32 caracteres aleatórios e `TRANSACTIONAL_EMAIL_WORKER_ENABLED=true`.
+  - Agende chamadas `POST https://<sua-api>/api/comunicacao/tarefas` com cabeçalho `Authorization: Bearer <TRANSACTIONAL_EMAIL_MAINTENANCE_AUTHORIZATION_SECRET>`. Cada chamada executa a manutenção da fila e envia um lote via Data API do Supabase.
+- **Opção B — Worker contínuo (`npm run worker:email`)**:
+  - Compile com `npm run build:worker` e execute `npm run worker:email` com `TRANSACTIONAL_EMAIL_WORKER_ENABLED=true`.
+  - Para testar apenas a conectividade do worker com a Data API do Supabase sem enviar e-mails, execute `npm run check:worker` (`node dist-worker/worker-emails-supabase.js --verificar`).
+
+### 4. Custom SMTP do Resend no Supabase Auth
+- Os e-mails nativos de confirmação de cadastro e recuperação de senha do Supabase Auth devem usar o **Custom SMTP** do Resend no painel do Supabase (**Authentication -> Emails -> SMTP Settings**):
+  - **Host**: `smtp.resend.com`
+  - **Port**: `465` (SSL/TLS) ou `587` (STARTTLS)
+  - **Username**: `resend`
+  - **Password**: a API Key do Resend (`re_...`)
+  - **Sender email**: o mesmo endereço verificado em `RESEND_SENDER_EMAIL_ADDRESS`
+  - **Sender name**: `Siso Aprova`
+
 ## Segurança do runtime
 
 Consulte [SEGURANCA-OPERACAO.md](SEGURANCA-OPERACAO.md) antes de implantar: store SQLite requer diretório privado gravável .cache/seguranca, configuração de proxy válida em produção e Node compatível. Sem IP confiável, fluxos anônimos sensíveis falham503 em produção; desenvolvimento direto permanece utilizável por cota de conta/email. Opção1 exige CORS ausente, não vazio. Este lote não altera nenhuma variável real nem aplica migrations.
+
+
+### Autenticação com Resend e sessão local
+
+Com `RESEND_API_KEY`, `RESEND_SENDER_EMAIL_ADDRESS` e `SUPABASE_SERVER_SECRET_API_KEY`, o backend gera links pelo Admin Auth e envia diretamente pelo Resend, independentemente do worker habilitado. Os links usam `token_hash` e nunca são gravados no histórico. A migration `20261121173000_autenticacao_emails_resend_identidade.sql` preserva senhas em reenvios e registra mensagens aceitas, inclusive webhooks recebidos antes do registro. Sem essa migration, o reenvio usa `auth.resend` com segurança; o registro de envios imediatos é opcional e não interrompe o envio já aceito. Sem configuração Resend/Admin, os fluxos usam Supabase Auth.
+
+Para usar também os templates no painel: Authentication → Email Templates → Confirm signup / Reset password. Cole respectivamente `docs/templates-supabase-auth/confirmar-cadastro.html` e `recuperar-senha.html`. Configure Site URL para a origem do frontend. Não altere os placeholders `{{ .SiteURL }}` e `{{ .TokenHash }}`. Referências: https://supabase.com/docs/reference/javascript/auth-admin-generatelink e https://supabase.com/docs/reference/javascript/auth-verifyotp.
+
+Em HTTP loopback (`localhost`, `127.0.0.1`, `[::1]`), mesmo com `npm start`, cookies usam HttpOnly, SameSite=Lax e Secure=false. Em HTTPS de produção mantêm prefixo __Host-, Secure, SameSite=None e Partitioned. Hosts localhost e 127.0.0.1 entram juntos na lista CORS; cookies continuam vinculados ao host, portanto use o mesmo host para frontend e backend. Após atualizar código, reconstrua os artefatos antes de `npm start`.
+
+Recuperação operacional: interrompa o processo local, restaure o código/artefatos anteriores se necessário e mantenha a migration incremental (não remove dados nem muda contratos). A proteção impede limpar uma senha existente; trocas para outra senha não vazia continuam permitidas. Aplicação remota e homologação real exigem operação autorizada separada.

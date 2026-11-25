@@ -86,6 +86,41 @@ export function exigirIp(requisicao: Request, hops: number) {
   return ip;
 }
 
+// Só o ambiente do servidor e a URL local autorizam o modo sem proxy.
+// Origin é fornecido pelo cliente e nunca participa desta decisão.
+export function producaoExigeIp(
+  requisicao: Request,
+  trustProxy: number,
+  producao = process.env.NODE_ENV === "production",
+): boolean {
+  if (!producao) return false;
+  if (trustProxy !== 0) return true;
+  const httpLoopback = (url: URL, permitirWildcard = false) =>
+    url.protocol === "http:" &&
+    ["localhost", "127.0.0.1", "[::1]", ...(permitirWildcard ? ["0.0.0.0"] : [])].includes(
+      url.hostname.toLowerCase(),
+    );
+  try {
+    const frontend = new URL(process.env.FRONTEND_APPLICATION_URL ?? "");
+    const destino = new URL(requisicao.url);
+    const origins = (process.env.BACKEND_CORS_ALLOWED_ORIGINS ?? "")
+      .split(",")
+      .map((x) => x.trim())
+      .filter(Boolean);
+    if (origins.some((origin) => new URL(origin).protocol === "https:")) return true;
+    const proto = requisicao.headers.get("x-forwarded-proto");
+    if (proto !== null && proto.trim().toLowerCase() !== "http") return true;
+    const forwardedFor = requisicao.headers.get("x-forwarded-for");
+    if (forwardedFor !== null) {
+      const ip = forwardedFor.trim().toLowerCase();
+      if (!new Set(["127.0.0.1", "::1", "[::1]", "::ffff:127.0.0.1"]).has(ip)) return true;
+    }
+    return !httpLoopback(frontend) || !httpLoopback(destino, true);
+  } catch {
+    return true;
+  }
+}
+
 export function limitarAutenticacao(
   requisicao: Request,
   hops: number,
@@ -94,7 +129,8 @@ export function limitarAutenticacao(
   producao = process.env.NODE_ENV === "production",
 ) {
   const ip = ipConfiavel(requisicao, hops);
-  if (!ip && producao) exigirIp(requisicao, hops);
+  const exigirIpRede = producaoExigeIp(requisicao, hops, producao);
+  if (!ip && exigirIpRede) exigirIp(requisicao, hops);
   if (ip) store.consumir("auth-ip:" + ip, 30);
   if (
     typeof email !== "string" ||

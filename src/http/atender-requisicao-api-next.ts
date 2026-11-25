@@ -5,6 +5,7 @@ import { restringirRecuperacao } from "../security/sessoes.js";
 import {
   ipConfiavel,
   exigirIp,
+  producaoExigeIp,
   limitarAutenticacao,
   limitesAplicacao,
 } from "../security/rate-limit.js";
@@ -48,6 +49,8 @@ import { temCookieSessaoSupabase } from "../utils/supabase/opcoes-cookie-sessao.
 import { RepositorioConsultasNegocioSupabase } from "../infrastructure/repositorio-consultas-supabase.js";
 import { ServicoComunicacaoSupabase } from "../infrastructure/comunicacao-supabase.js";
 import { criarClienteSupabaseAdministrativo } from "../utils/supabase/admin.js";
+
+import { PersistenciaWorkerEmailsSupabase } from "../infrastructure/persistencia-worker-emails-supabase.js";
 
 const config = carregarConfiguracoesAmbiente(process.env, { supabase: true });
 const logger = pino({
@@ -137,11 +140,15 @@ function responder(
   return resposta;
 }
 
-async function processarWebhook(requisicao: Request) {
+async function processarWebhook(
+  requisicao: Request,
+  servicoEmails: Pick<ServicoEnvioEmailsTransacionaisResend, "validarAssinaturaWebhook"> = emails,
+  criarAdmin: typeof criarClienteSupabaseAdministrativo = criarClienteSupabaseAdministrativo,
+) {
   const bytes = await lerBytesLimitados(requisicao, 65536);
   if (
     bytes.length > 65536 ||
-    !emails.validarAssinaturaWebhook(
+    !servicoEmails.validarAssinaturaWebhook(
       requisicao.headers.get("svix-id") ?? "",
       requisicao.headers.get("svix-timestamp") ?? "",
       requisicao.headers.get("svix-signature") ?? "",
@@ -160,20 +167,27 @@ async function processarWebhook(requisicao: Request) {
     throw new ErroRegraNegocioHttp("Evento inválido.");
   }
   if (evento.type.trim() && evento.data.email_id.trim()) {
-    const { error } = await criarClienteSupabaseAdministrativo().rpc(
-      "registrar_evento_resend_backend",
-      {
-        p_webhook: requisicao.headers.get("svix-id")!,
-        p_idmensagem: evento.data.email_id,
-        p_evento: evento.type,
-      },
-    );
+    const { error } = await criarAdmin().rpc("registrar_evento_resend_backend", {
+      p_webhook: requisicao.headers.get("svix-id")!,
+      p_idmensagem: evento.data.email_id,
+      p_evento: evento.type,
+    });
     if (error) throw error;
   }
   return criarRespostaSucesso({ recebido: true }, "Evento recebido.");
 }
 
-export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao) {
+export function criarAtendedorHttp(
+  criarCliente = criarClienteSupabaseRequisicao,
+  dependencias: {
+    criarAdmin?: typeof criarClienteSupabaseAdministrativo;
+    emailsAutenticacao?: Pick<
+      ServicoEnvioEmailsTransacionaisResend,
+      "enviarEmailAutenticacaoImediato" | "executarCicloWorker"
+    >;
+    emails?: Pick<ServicoEnvioEmailsTransacionaisResend, "validarAssinaturaWebhook">;
+  } = {},
+) {
   return async function atenderRequisicaoApiNext(requisicao: Request, _contexto: ContextoNext) {
     const identificador = randomUUID();
     const url = new URL(requisicao.url);
@@ -269,10 +283,15 @@ export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao
 
       if (caminho === "/api/ResendWebhook/registrar-evento-entrega" && metodo === "POST") {
         const ipWebhook = ipConfiavel(requisicao, config.trustProxy);
-        if (!ipWebhook && config.production) exigirIp(requisicao, config.trustProxy);
+        if (!ipWebhook && producaoExigeIp(requisicao, config.trustProxy, config.production))
+          exigirIp(requisicao, config.trustProxy);
         if (ipWebhook) limitarRequisicoes("webhook-resend:" + ipWebhook, 600);
         return responder(
-          await processarWebhook(requisicao),
+          await processarWebhook(
+            requisicao,
+            dependencias.emails ?? emails,
+            dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo,
+          ),
           200,
           requisicao,
           identificador,
@@ -310,7 +329,8 @@ export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao
           if (identidade.data.user && !identidade.error)
             limitarRequisicoes("auth-user:" + identidade.data.user.id, 30);
           else if (ip) limitarRequisicoes("auth-ip:" + ip, 30);
-          else if (config.production) exigirIp(requisicao, config.trustProxy);
+          else if (producaoExigeIp(requisicao, config.trustProxy, config.production))
+            exigirIp(requisicao, config.trustProxy);
           else {
             const dados = (await lerAuth()) as {
               token?: unknown;
@@ -333,6 +353,31 @@ export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao
           lerAuth,
           origem && config.origins.includes(origem) ? origem : config.auth.clientUrl || undefined,
           {
+            ...(config.email.key.trim() &&
+            config.email.from.trim() &&
+            process.env.SUPABASE_SERVER_SECRET_API_KEY?.trim()
+              ? (() => {
+                  const criarAdmin = dependencias.criarAdmin ?? criarClienteSupabaseAdministrativo;
+                  const servico =
+                    dependencias.emailsAutenticacao ??
+                    new ServicoEnvioEmailsTransacionaisResend(
+                      db,
+                      config,
+                      fetch,
+                      new PersistenciaWorkerEmailsSupabase(criarAdmin()),
+                    );
+                  return {
+                    criarAdmin,
+                    enviarEmailAutenticacao: (
+                      dados: Parameters<
+                        ServicoEnvioEmailsTransacionaisResend["enviarEmailAutenticacaoImediato"]
+                      >[0],
+                    ) => servico.enviarEmailAutenticacaoImediato(dados, requisicao.signal),
+                    enviarBoasVindas: () =>
+                      servico.executarCicloWorker(logger, requisicao.signal, false),
+                  };
+                })()
+              : {}),
             bearerToken: tokenBearer,
             reautenticar: reautenticarSenha,
             revogarBearer: async (token) => {
@@ -412,7 +457,9 @@ export function criarAtendedorHttp(criarCliente = criarClienteSupabaseRequisicao
       const enderecoCliente = () =>
         usuario.id ||
         ipConfiavel(requisicao, config.trustProxy) ||
-        (config.production ? exigirIp(requisicao, config.trustProxy) : null);
+        (producaoExigeIp(requisicao, config.trustProxy, config.production)
+          ? exigirIp(requisicao, config.trustProxy)
+          : null);
       if (rota?.controller === "Autenticacao" || rota?.controller === "Navegador") {
         const id = enderecoCliente();
         if (id) limitarRequisicoes("auth:" + id, 10);

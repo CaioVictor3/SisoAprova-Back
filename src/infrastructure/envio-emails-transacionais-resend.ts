@@ -18,6 +18,15 @@ import type { PendingEmail } from "./repositorio-contas-sessoes-postgresql.js";
 import { validarUrlHttps, type HttpFetch } from "./seguranca-requisicoes-https.js";
 import type { PersistenciaWorkerEmailsSupabase } from "./persistencia-worker-emails-supabase.js";
 
+export interface ResumoCicloWorkerEmails {
+  reservados: number;
+  aceitos: number;
+  falhas: number;
+  cancelados: number;
+  devolvidos: number;
+  manutencaoExecutada: boolean;
+}
+
 interface EmailTransacionalReservado {
   idEmailTransacional: string;
   tipo_evento: string;
@@ -449,6 +458,10 @@ export class ServicoEnvioEmailsTransacionaisResend {
       return true;
     }
 
+    if (this.config.auth.key.length < 64) {
+      throw new FalhaEntregaEmailTransacional("chave_legada_indisponivel", false);
+    }
+
     const url = new URL(
       descriptografarConteudoAutenticado(email.link_protegido, this.config.auth.key),
     );
@@ -470,7 +483,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
     )[0];
   }
 
-  renderizarConteudoEmail(email: EmailTransacionalReservado) {
+  renderizarConteudoEmail(email: EmailTransacionalReservado, linkDireto?: string) {
     const dadosEmail = JSON.parse(email.dados_template) as { nome?: string };
 
     const name = dadosEmail.nome ?? "";
@@ -509,21 +522,27 @@ export class ServicoEnvioEmailsTransacionaisResend {
       throw new Error("Tipo de e-mail não reconhecido.");
     }
 
+    if (email.link_protegido && this.config.auth.key.length < 64) {
+      throw new FalhaEntregaEmailTransacional("chave_legada_indisponivel", false);
+    }
+
     const origin = new URL(this.config.auth.clientUrl);
 
-    const link = email.link_protegido
-      ? descriptografarConteudoAutenticado(email.link_protegido, this.config.auth.key)
-      : this.config.auth.clientUrl.replace(/\/+$/, "") +
-        (email.tipo_evento === "SUBSCRIPTION_EXPIRING"
-          ? "/estudante/minha-assinatura"
-          : email.tipo_evento === "USER_INACTIVE"
-            ? "/minha-conta"
-            : "/entrar");
+    const link =
+      linkDireto ??
+      (email.link_protegido
+        ? descriptografarConteudoAutenticado(email.link_protegido, this.config.auth.key)
+        : this.config.auth.clientUrl.replace(/\/+$/, "") +
+          (email.tipo_evento === "SUBSCRIPTION_EXPIRING"
+            ? "/estudante/minha-assinatura"
+            : email.tipo_evento === "USER_INACTIVE"
+              ? "/minha-conta"
+              : "/entrar"));
 
     const destination = new URL(link);
 
     if (
-      email.link_protegido &&
+      (linkDireto !== undefined || email.link_protegido) &&
       (destination.origin !== origin.origin || !destination.pathname.startsWith("/autenticacao/"))
     ) {
       throw new Error("Link do e-mail fora da origem configurada.");
@@ -533,24 +552,87 @@ export class ServicoEnvioEmailsTransacionaisResend {
 
     const safeLink = escaparHtmlMensagemEmail(link);
 
-    const greeting = name.trim() ? `Olá, ${escaparHtmlMensagemEmail(name)}!` : "Olá!";
+    const nomeLimpo = name.trim();
+    const saudacaoTexto = nomeLimpo ? `Olá, ${nomeLimpo}!` : "Olá!";
+    const greeting = nomeLimpo ? `Olá, ${escaparHtmlMensagemEmail(nomeLimpo)}!` : "Olá!";
 
     const notice = ["EMAIL_VERIFICATION", "PASSWORD_RESET"].includes(email.tipo_evento)
       ? '<p style="color:#64748b;font-size:13px">Se você não solicitou este e-mail, pode ignorá-lo.</p>'
       : "";
 
-    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f5f7ff;font-family:Arial,sans-serif;color:#18213e"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 12px"><table role="presentation" width="100%" style="max-width:560px;background:white;border-radius:20px"><tr><td style="padding:32px"><p style="color:#4034a5;font-weight:700">${escaparHtmlMensagemEmail(this.config.email.appName)}</p><h1 style="font-size:27px">${title}</h1><p>${greeting}</p><p>${description}</p><p style="margin:32px 0"><a href="${safeLink}" style="background:#28216d;color:white;padding:14px 22px;border-radius:10px;text-decoration:none;font-weight:700">${button}</a></p><p style="font-size:13px;overflow-wrap:anywhere">Se o botão não abrir, use este endereço:<br><a href="${safeLink}">${safeLink}</a></p>${notice}${email.tipo_evento === "USER_INACTIVE" ? '<p style="font-size:13px">Você pode desativar estes lembretes em Minha conta.</p>' : ""}</td></tr></table></td></tr></table></body></html>`;
+    const html = `<!doctype html><html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head><body style="margin:0;background:#f6f4fb;font-family:Arial,sans-serif;color:#1c1932"><table role="presentation" width="100%" cellpadding="0" cellspacing="0"><tr><td align="center" style="padding:32px 12px"><table role="presentation" width="100%" style="max-width:560px;background:#ffffff;border:1px solid #e5e0ef;border-radius:20px"><tr><td style="height:8px;background:#3b2d82;background-image:linear-gradient(125deg,#272862,#623b9d);border-radius:20px 20px 0 0"></td></tr><tr><td style="padding:32px"><table role="presentation" cellpadding="0" cellspacing="0"><tr><td style="padding-right:12px"><img src="https://www.sisoaprova.com.br/marca/siso-aprova-icon-badge-180.png" width="44" height="44" alt="Logo Siso Aprova" style="display:block;width:44px;height:44px;border-radius:12px;background:#3b2d82"></td><td><span style="font-size:22px;font-weight:800;color:#1c1932;letter-spacing:-0.5px">Siso</span> <span style="font-size:22px;font-weight:600;color:#7749c6;letter-spacing:-0.5px">Aprova</span><br><span style="font-size:10px;color:#5b556f">PREPARAÇÃO EM ODONTOLOGIA</span></td></tr></table><h1 style="font-size:27px">${title}</h1><div style="font-size:16px;line-height:1.65;color:#1c1932"><p>${greeting}</p><p>${description}</p></div><p style="margin:32px 0"><a href="${safeLink}" style="background:#3b2d82;background-image:linear-gradient(125deg,#272862,#623b9d);color:#ffffff;padding:14px 26px;border-radius:12px;text-decoration:none;font-weight:700;display:inline-block">${button}</a></p><div style="background:#f6f4fb;border:1px solid #e5e0ef;border-radius:12px;padding:14px 16px;font-size:13px;color:#5b556f;overflow-wrap:anywhere">Se o botão não abrir, use este endereço:<br><a href="${safeLink}" style="color:#3b2d82">${safeLink}</a></div>${notice}${email.tipo_evento === "USER_INACTIVE" ? '<p style="font-size:13px">Você pode desativar estes lembretes em Minha conta.</p>' : ""}<p style="padding:12px;background:#f0ecf8;color:#5b556f;font-size:12px">${escaparHtmlMensagemEmail(this.config.email.appName)}</p></td></tr></table></td></tr></table></body></html>`;
 
     return {
       html,
-      text: `${name},\n\n${action[1]}\n\n${link}\n\n${email.tipo_evento === "USER_INACTIVE" ? "Desative estes lembretes em Minha conta." : "Se não solicitou este e-mail, ignore-o."}\n\n${this.config.email.appName}`,
+      text: `${saudacaoTexto}\n\n${action[1]}\n\n${link}\n\n${email.tipo_evento === "USER_INACTIVE" ? "Desative estes lembretes em Minha conta." : "Se não solicitou este e-mail, ignore-o."}\n\n${this.config.email.appName}`,
     };
   }
 
-  async enviarEmailResend(email: EmailTransacionalReservado, sinalCancelamento?: AbortSignal) {
-    const configuracoesServico = this.config.email;
+  async enviarEmailAutenticacaoImediato(
+    dados: {
+      tipoEvento: "EMAIL_VERIFICATION" | "PASSWORD_RESET";
+      idUsuario: string | null;
+      emailDestinatario: string;
+      nome?: string;
+      link: string;
+      chaveIdempotencia?: string;
+    },
+    sinalCancelamento?: AbortSignal,
+  ) {
+    if (!this.config.email.key.trim() || !this.config.email.from.trim())
+      throw new ErroRegraNegocioHttp("O envio de e-mails está temporariamente indisponível.", 503);
+    const id = randomUUID();
+    const assunto =
+      dados.tipoEvento === "EMAIL_VERIFICATION"
+        ? "Confirme seu e-mail — Siso Aprova"
+        : "Recuperação de senha — Siso Aprova";
+    const chave = dados.chaveIdempotencia ?? `${dados.tipoEvento}/${id}`;
+    const provedor = await this.enviarEmailResend(
+      {
+        idEmailTransacional: id,
+        tipo_evento: dados.tipoEvento,
+        idUsuario: dados.idUsuario,
+        email_destinatario: dados.emailDestinatario,
+        assunto,
+        dados_template: JSON.stringify({ nome: dados.nome?.slice(0, 200) ?? "" }),
+        link_protegido: null,
+        validade_link_em: null,
+        quantidade_tentativas: 1,
+        maximo_tentativas: 1,
+        chave_idempotencia: chave,
+        identificador_processamento: id,
+      },
+      sinalCancelamento,
+      dados.link,
+    );
+    if (this.persistenciaSupabase) {
+      try {
+        await this.persistenciaSupabase.executar("registrarEmailAutenticacaoEnviado", {
+          id,
+          tipo: dados.tipoEvento,
+          usuario: dados.idUsuario,
+          email: dados.emailDestinatario,
+          nome: dados.nome?.slice(0, 200) ?? "",
+          assunto,
+          chave,
+          provedor,
+        });
+      } catch {
+        /* Registro opcional durante a implantação incremental; não repetir o envio. */
+      }
+    }
+    return provedor;
+  }
 
-    if (!configuracoesServico.key || !configuracoesServico.from) {
+  async enviarEmailResend(
+    email: EmailTransacionalReservado,
+    sinalCancelamento?: AbortSignal,
+    linkDireto?: string,
+  ) {
+    const configuracoesServico = this.config.email;
+    const enderecoRemetente = configuracoesServico.from.replace(/[\r\n<>]+/g, "").trim();
+
+    if (!configuracoesServico.key.trim() || !enderecoRemetente) {
       throw new FalhaEntregaEmailTransacional("provedor_nao_configurado", false);
     }
 
@@ -558,7 +640,13 @@ export class ServicoEnvioEmailsTransacionaisResend {
       throw new FalhaEntregaEmailTransacional("provedor_nao_configurado", true);
     }
 
-    const content = this.renderizarConteudoEmail(email);
+    const nomeRemetente = configuracoesServico.fromName
+      .replace(/[\r\n<>]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+    const remetente = nomeRemetente ? `${nomeRemetente} <${enderecoRemetente}>` : enderecoRemetente;
+
+    const content = this.renderizarConteudoEmail(email, linkDireto);
 
     try {
       const response = await this.clienteHttp(new URL("emails", configuracoesServico.url), {
@@ -569,7 +657,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          from: `${configuracoesServico.fromName} <${configuracoesServico.from}>`,
+          from: remetente,
           to: [email.email_destinatario],
           subject: email.assunto,
           ...content,
@@ -628,7 +716,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
       if (!(await this.fluxoEstaHabilitado(email.tipo_evento))) {
         await this.executarConsultaEmail("devolverEmailAguardandoAtivacao", params);
 
-        return;
+        return "devolvido" as const;
       }
 
       if (!(await this.podeEnviarEmail(email))) {
@@ -637,7 +725,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
           motivo: "link_expirado_ou_preferencia_desativada",
         });
 
-        return;
+        return "cancelado" as const;
       }
 
       const identificadorEmail = await this.enviarEmailResend(email, sinalCancelamento);
@@ -665,9 +753,10 @@ export class ServicoEnvioEmailsTransacionaisResend {
         { emailId: email.idEmailTransacional, type: email.tipo_evento },
         "Email aceito pelo provedor",
       );
+      return "aceito" as const;
     } catch (error) {
       if (sinalCancelamento.aborted) {
-        return;
+        return "abortado" as const;
       }
 
       const permanent = error instanceof FalhaEntregaEmailTransacional && error.permanent;
@@ -700,6 +789,7 @@ export class ServicoEnvioEmailsTransacionaisResend {
         { emailId: email.idEmailTransacional, code },
         "Falha no processamento de email",
       );
+      return "falha" as const;
     }
   }
 
@@ -707,7 +797,16 @@ export class ServicoEnvioEmailsTransacionaisResend {
     registradorEventos: Logger,
     sinalCancelamento: AbortSignal,
     maintenance: boolean,
-  ) {
+  ): Promise<ResumoCicloWorkerEmails> {
+    const resumo: ResumoCicloWorkerEmails = {
+      reservados: 0,
+      aceitos: 0,
+      falhas: 0,
+      cancelados: 0,
+      devolvidos: 0,
+      manutencaoExecutada: false,
+    };
+
     if (maintenance) {
       await this.executarConsultaEmail("limparHistoricoEmailsAntigos", {
         dias: this.config.email.retention,
@@ -729,16 +828,31 @@ export class ServicoEnvioEmailsTransacionaisResend {
           limite: this.config.email.batch,
         });
       }
+
+      resumo.manutencaoExecutada = true;
     }
 
     if (this.config.email.key && this.config.email.from) {
-      for (const email of await this.reservarLoteEmails()) {
+      const reservados = await this.reservarLoteEmails();
+      resumo.reservados = reservados.length;
+
+      for (const email of reservados) {
         if (sinalCancelamento.aborted) {
           break;
         }
 
-        await this.processarEmailReservado(email, registradorEventos, sinalCancelamento);
+        const resultado = await this.processarEmailReservado(
+          email,
+          registradorEventos,
+          sinalCancelamento,
+        );
+        if (resultado === "aceito") resumo.aceitos += 1;
+        else if (resultado === "falha") resumo.falhas += 1;
+        else if (resultado === "cancelado") resumo.cancelados += 1;
+        else if (resultado === "devolvido") resumo.devolvidos += 1;
       }
     }
+
+    return resumo;
   }
 }

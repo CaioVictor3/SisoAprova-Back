@@ -2,6 +2,7 @@ import { cabecalhosSeguranca } from "./src/security/headers.mjs";
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: { agentUpgrade: "security" },
   output: "standalone",
   reactStrictMode: true,
   outputFileTracingIncludes: {

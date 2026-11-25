@@ -45,7 +45,7 @@ export function criarClienteSupabaseRequisicao(
     return cliente;
   }
   return createServerClient(url, chave, {
-    cookieOptions: opcoesCookieSessaoSupabase(),
+    cookieOptions: opcoesCookieSessaoSupabase(requisicao),
     cookies: {
       getAll: () => requisicao.cookies.getAll(),
       setAll: (valores, cabecalhos) => {

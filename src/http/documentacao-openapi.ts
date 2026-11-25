@@ -1,3 +1,4 @@
+import { completarDocumentacaoFinanceira } from "./documentacao-financeiro.js";
 import routes from "../contracts/rotas-publicas-api.json" with { type: "json" };
 import { obterCamposContrato, metadata } from "../contracts/validacao-conversao-contratos-api.js";
 
@@ -523,6 +524,45 @@ export function gerarDocumentoOpenApi() {
     (paths["/api/financeiro/" + rota] ??= {})[metodo] = operacao;
   }
 
+  completarDocumentacaoFinanceira(paths, schemas);
+  schemas.ComunicacaoTarefasResumo = {
+    type: "object",
+    additionalProperties: false,
+    required: [
+      "habilitado",
+      "reservados",
+      "aceitos",
+      "falhas",
+      "cancelados",
+      "devolvidos",
+      "manutencaoExecutada",
+    ],
+    properties: {
+      habilitado: { type: "boolean" },
+      reservados: { type: "integer", minimum: 0 },
+      aceitos: { type: "integer", minimum: 0 },
+      falhas: { type: "integer", minimum: 0 },
+      cancelados: { type: "integer", minimum: 0 },
+      devolvidos: { type: "integer", minimum: 0 },
+      manutencaoExecutada: { type: "boolean" },
+    },
+  };
+  paths["/api/comunicacao/tarefas"] = {
+    post: {
+      operationId: "Comunicacao_tarefas_post",
+      tags: ["Comunicacao"],
+      description:
+        "Manutenção e processamento de lote da fila de e-mails transacionais via Resend; exige Bearer TRANSACTIONAL_EMAIL_MAINTENANCE_AUTHORIZATION_SECRET",
+      security: [{ agendadorComunicacaoBearerAuth: [] }],
+      responses: {
+        ...respostaHonra("Ciclo de manutenção e envio de e-mails transacionais concluído", {
+          $ref: "#/components/schemas/ComunicacaoTarefasResumo",
+        }),
+        405: { description: "Método não permitido" },
+        503: { description: "Serviço de e-mails transacionais não configurado" },
+      },
+    },
+  };
   return {
     openapi: "3.1.0",
     info: {
@@ -557,6 +597,11 @@ export function gerarDocumentoOpenApi() {
           type: "http",
           scheme: "bearer",
           description: "Credencial do agendador para /api/financeiro/tarefas.",
+        },
+        agendadorComunicacaoBearerAuth: {
+          type: "http",
+          scheme: "bearer",
+          description: "Credencial do agendador para /api/comunicacao/tarefas.",
         },
       },
     },

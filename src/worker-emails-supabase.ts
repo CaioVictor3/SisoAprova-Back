@@ -9,9 +9,9 @@ import { criarClienteSupabaseAdministrativo } from "./utils/supabase/admin.js";
 
 const ambiente = carregarConfiguracoesAmbiente(process.env, { supabase: true });
 const logger = pino({ level: ambiente.logLevel, redact: redacaoLogs });
-const persistencia = new PersistenciaWorkerEmailsSupabase(criarClienteSupabaseAdministrativo());
 
 if (process.argv.includes("--verificar")) {
+  const persistencia = new PersistenciaWorkerEmailsSupabase(criarClienteSupabaseAdministrativo());
   await persistencia.executar("listarFluxos");
   logger.info("Conexão do worker com o Supabase verificada, sem enviar e-mails.");
 } else if (!ambiente.email.worker) {
@@ -25,6 +25,7 @@ if (process.argv.includes("--verificar")) {
     throw new Error(
       "Configure FRONTEND_APPLICATION_URL com uma origem autorizada em BACKEND_CORS_ALLOWED_ORIGINS.",
     );
+  const persistencia = new PersistenciaWorkerEmailsSupabase(criarClienteSupabaseAdministrativo());
   const servico = new ServicoEnvioEmailsTransacionaisResend(
     new ConexaoTransacoesPostgreSql(ambiente),
     ambiente,

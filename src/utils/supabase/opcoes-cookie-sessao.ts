@@ -3,8 +3,24 @@ import type { CookieOptionsWithName } from "@supabase/ssr";
 const nomeSessaoProducao = "__Host-sisoaprova-auth-token";
 const nomeSessaoProducaoLegado = "__Host-concursaai-auth-token";
 
-export function opcoesCookieSessaoSupabase(): CookieOptionsWithName {
-  const producao = process.env.NODE_ENV === "production";
+export function opcoesCookieSessaoSupabase(requisicao?: Request): CookieOptionsWithName {
+  const httpLocal = (valor?: string | null) => {
+    try {
+      const url = new URL(valor ?? "");
+      return (
+        url.protocol === "http:" &&
+        ["localhost", "127.0.0.1", "[::1]", "0.0.0.0"].includes(url.hostname.toLowerCase())
+      );
+    } catch {
+      return false;
+    }
+  };
+  const contextoLocal =
+    httpLocal(process.env.FRONTEND_APPLICATION_URL) ||
+    (httpLocal(requisicao?.url) &&
+      (!requisicao?.headers.has("x-forwarded-proto") ||
+        requisicao.headers.get("x-forwarded-proto")?.trim().toLowerCase() === "http"));
+  const producao = process.env.NODE_ENV === "production" && !contextoLocal;
   return {
     httpOnly: true,
     path: "/",

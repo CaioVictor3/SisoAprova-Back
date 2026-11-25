@@ -5,7 +5,7 @@ import type { NomeConsultaEmailTransacional } from "./consultas-sql-emails-trans
 export class PersistenciaWorkerEmailsSupabase {
   constructor(private readonly cliente: SupabaseClient) {}
   async executar<T extends QueryResultRow = QueryResultRow>(
-    nome: NomeConsultaEmailTransacional | "listarFluxos",
+    nome: NomeConsultaEmailTransacional | "listarFluxos" | "registrarEmailAutenticacaoEnviado",
     parametros: Record<string, unknown> = {},
   ): Promise<QueryResult<T>> {
     const { data, error } = await this.cliente.rpc("operar_worker_email", {

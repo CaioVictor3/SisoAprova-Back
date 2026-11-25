@@ -16,7 +16,7 @@
     "test": "node --import ./tests/isolamento.mjs --import tsx --test tests/*.test.ts",
     "check:parity": "tsx scripts/verificar-integridade-e-paridade-origem.ts",
     "check:database": "tsx scripts/verificar-conexao-supabase.ts",
-    "test:all": "npm run format:check && npm run typecheck && npm test && npm run test:importacao && npm run check:parity",
+    "test:all": "npm run format:check && npm run typecheck && npm test && npm run test:postgres && npm run test:importacao && npm run check:parity",
     "import:prova": "node tools/importacao/scripts/importar-prova.mjs",
     "check:integration": "tsx scripts/verificar-integracao-supabase.ts",
     "build:worker": "tsc -p tsconfig.worker.json",
@@ -24,7 +24,9 @@
     "check:worker": "node dist-worker/worker-emails-supabase.js --verificar",
     "worker:pagamentos": "node dist-worker/worker-pagamentos-supabase.js",
     "contratos:exportar": "tsx scripts/exportar-openapi.ts",
-    "test:importacao": "node --import ./tests/isolamento.mjs --test tools/importacao/scripts/importacao-prova.test.mjs"
+    "test:importacao": "node --import ./tests/isolamento.mjs --test tools/importacao/scripts/importacao-prova.test.mjs",
+    "test:postgres": "node --import ./tests/isolamento.mjs --import tsx --test tests/postgres/*.test.ts",
+    "test:pagamentos": "node --import ./tests/isolamento.mjs --import tsx --test tests/pagamentos*.test.ts tests/postgres/pagamentos*.test.ts"
   },
   "dependencies": {
     "@supabase/ssr": "0.12.7",
@@ -32,7 +34,7 @@
     "bcryptjs": "3.0.3",
     "dotenv": "18.0.9",
     "jose": "6.2.13",
-    "next": "16.4.3",
+    "next": "16.4.6",
     "pg": "8.23.1",
     "pino": "10.4.0",
     "react": "19.2.4",
@@ -43,6 +45,7 @@
     "@types/node": "26.6.5",
     "@types/pg": "8.23.1",
     "@types/react": "19.3.0",
+    "embedded-postgres": "17.10.0-beta.17",
     "prettier": "3.9.10",
     "tsx": "4.23.15",
     "typescript": "6.0.2"
